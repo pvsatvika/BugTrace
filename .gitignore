@@ -43,8 +43,14 @@ venv.bak/
 .DS_Store
 Thumbs.db
 
-# Android (Future build artifacts)
+# Android Build & Machine-specific Artifacts
 .gradle/
 captures/
 *.apk
 *.aar
+local.properties
+*.zip
+android/build/
+android/app/build/
+android/.gradle/
+android/gradle-8.7-bin.zip

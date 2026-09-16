@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">BugTrace</string>
+    <string name="app_subtitle">Mobile Bug Reproduction Logger</string>
+</resources>
