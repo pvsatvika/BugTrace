@@ -163,7 +163,8 @@ class ReportRepository(
             orientation = session.orientation,
             networkState = session.networkState,
             cpuSummary = session.cpuSummary,
-            isSimulated = session.isSimulated
+            isSimulated = session.isSimulated,
+            telemetryHistory = session.telemetryHistory
         )
 
         val logResult = apiClient.submitLog(telemetry)

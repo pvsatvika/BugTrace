@@ -100,6 +100,20 @@ class CaptureSessionStore(context: Context) {
             condObj.put(k, v)
         }
         obj.put("conditions", condObj)
+
+        val historyArray = JSONArray()
+        session.telemetryHistory.forEach { snap ->
+            val snapObj = JSONObject()
+            snapObj.put("timestampMs", snap.timestampMs)
+            snapObj.put("batteryPercent", snap.batteryPercent)
+            snapObj.put("isCharging", snap.isCharging)
+            snapObj.put("orientation", snap.orientation)
+            snapObj.put("networkState", snap.networkState)
+            snapObj.put("cpuSummary", snap.cpuSummary)
+            historyArray.put(snapObj)
+        }
+        obj.put("telemetryHistory", historyArray)
+
         return obj
     }
 
@@ -113,6 +127,24 @@ class CaptureSessionStore(context: Context) {
         val isSim = obj.optBoolean("isSimulated", false)
         val defaultSource = if (isSim) "SIMULATED DEMO DATA" else "REAL DEVICE TELEMETRY"
         val dSource = obj.optString("dataSource", defaultSource)
+
+        val historyList = mutableListOf<com.bugtrace.app.model.TelemetrySnapshot>()
+        val historyArray = obj.optJSONArray("telemetryHistory")
+        if (historyArray != null) {
+            for (i in 0 until historyArray.length()) {
+                val hObj = historyArray.getJSONObject(i)
+                historyList.add(
+                    com.bugtrace.app.model.TelemetrySnapshot(
+                        timestampMs = hObj.optLong("timestampMs", System.currentTimeMillis()),
+                        batteryPercent = hObj.optInt("batteryPercent", 0),
+                        isCharging = hObj.optBoolean("isCharging", false),
+                        orientation = hObj.optString("orientation", "Portrait"),
+                        networkState = hObj.optString("networkState", "Unknown"),
+                        cpuSummary = hObj.optString("cpuSummary", "N/A")
+                    )
+                )
+            }
+        }
 
         return CaptureSession(
             id = obj.getString("id"),
@@ -129,7 +161,8 @@ class CaptureSessionStore(context: Context) {
             conditions = condMap,
             summary = if (obj.isNull("summary")) null else obj.optString("summary"),
             isSimulated = isSim,
-            dataSource = dSource
+            dataSource = dSource,
+            telemetryHistory = historyList
         )
     }
 }

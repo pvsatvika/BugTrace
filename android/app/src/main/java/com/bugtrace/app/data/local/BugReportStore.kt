@@ -104,6 +104,13 @@ class BugReportStore(context: Context) {
         report.evidence.forEach { evArr.put(it) }
         obj.put("evidence", evArr)
 
+        val orientArr = JSONArray()
+        report.orientationHistory.forEach { orientArr.put(it) }
+        obj.put("orientation_history", orientArr)
+        obj.put("orientation_change_count", report.orientationChangeCount)
+        obj.put("snapshot_count", report.snapshotCount)
+        obj.put("score_title", report.scoreTitle)
+
         return obj
     }
 
@@ -162,6 +169,14 @@ class BugReportStore(context: Context) {
             }
         }
 
+        val orientationHistList = mutableListOf<String>()
+        val orientArray = obj.optJSONArray("orientation_history")
+        if (orientArray != null) {
+            for (i in 0 until orientArray.length()) {
+                orientationHistList.add(orientArray.optString(i, ""))
+            }
+        }
+
         return BugReport(
             id = idVal,
             reportId = reportIdVal,
@@ -178,7 +193,11 @@ class BugReportStore(context: Context) {
             stepsToReproduce = stepsToReproduceList,
             deviceContext = deviceContextMap,
             evidence = evidenceList,
-            timestamp = obj.optString("timestamp", "")
+            timestamp = obj.optString("timestamp", ""),
+            orientationHistory = orientationHistList,
+            orientationChangeCount = obj.optInt("orientation_change_count", maxOf(0, orientationHistList.size - 1)),
+            snapshotCount = obj.optInt("snapshot_count", maxOf(1, orientationHistList.size)),
+            scoreTitle = obj.optString("score_title", "CONDITION SCORE")
         )
     }
 }

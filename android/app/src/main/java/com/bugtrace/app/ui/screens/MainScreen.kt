@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Assessment
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,7 +29,8 @@ import kotlinx.coroutines.launch
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     CAPTURE("Capture", Icons.Default.Sensors),
     TIMELINE("Timeline", Icons.AutoMirrored.Filled.List),
-    REPORTS("Reports", Icons.Default.Assessment)
+    REPORTS("Reports", Icons.Default.Assessment),
+    DEMO("Demo", Icons.Default.Science)
 }
 
 @Composable
@@ -143,6 +145,18 @@ fun MainScreen(
                     }
                 )
                 NavigationTab.REPORTS -> ReportsScreen(reportRepository = reportRepository)
+                NavigationTab.DEMO -> DemoScreen(
+                    reportRepository = reportRepository,
+                    historyRepository = historyRepository,
+                    onViewReport = { reportId ->
+                        coroutineScope.launch {
+                            val success = reportRepository.loadReportById(reportId)
+                            if (success) {
+                                selectedTab = NavigationTab.REPORTS
+                            }
+                        }
+                    }
+                )
             }
         }
     }

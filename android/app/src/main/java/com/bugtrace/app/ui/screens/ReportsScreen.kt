@@ -418,7 +418,7 @@ fun ReportCardItem(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "CONFIDENCE: ${report.confidence}%",
+                    text = "${report.scoreTitle.ifBlank { "CONDITION SCORE" }}: ${report.confidence}%",
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = FontFamily.Monospace,
                     color = TextMuted,
@@ -587,12 +587,12 @@ fun ReportDetailView(
             }
         }
 
-        // 3. OBSERVED TELEMETRY — SUMMARY
+        // 3. WHAT BUGTRACE DETECTED (SUMMARY)
         if (report.summary.isNotBlank()) {
             item {
                 Column {
                     Text(
-                        text = "// OBSERVED TELEMETRY — SUMMARY",
+                        text = "// WHAT BUGTRACE DETECTED",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted,
                         fontFamily = FontFamily.Monospace,
@@ -620,11 +620,11 @@ fun ReportDetailView(
             }
         }
 
-        // 4. OBSERVED TELEMETRY — CONDITIONS
+        // 4. OBSERVED DEVICE CONDITIONS
         item {
             Column {
                 Text(
-                    text = "// OBSERVED TELEMETRY — CONDITIONS",
+                    text = "// OBSERVED DEVICE CONDITIONS",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     fontFamily = FontFamily.Monospace,
@@ -669,7 +669,51 @@ fun ReportDetailView(
             }
         }
 
-        // 5. OBSERVED TELEMETRY — DEVICE CONTEXT
+        // 5. ORIENTATION HISTORY
+        if (report.orientationHistory.isNotEmpty()) {
+            item {
+                Column {
+                    Text(
+                        text = "// ORIENTATION HISTORY",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(DarkSurface)
+                            .border(1.dp, DarkCardBorder, RoundedCornerShape(10.dp))
+                            .padding(14.dp)
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val formattedSeq = report.orientationHistory.joinToString(" → ") { it.uppercase() }
+                            Text(
+                                text = formattedSeq,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentCyan,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "${report.orientationChangeCount} rotation transition(s) recorded across ${report.snapshotCount} telemetry snapshot(s).",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 6. OBSERVED TELEMETRY — DEVICE CONTEXT
         if (report.deviceContext.isNotEmpty()) {
             item {
                 Column {
@@ -720,12 +764,12 @@ fun ReportDetailView(
             }
         }
 
-        // 6. OBSERVED TELEMETRY — EVIDENCE LOG
+        // 7. TELEMETRY EVIDENCE
         if (report.evidence.isNotEmpty()) {
             item {
                 Column {
                     Text(
-                        text = "// OBSERVED TELEMETRY — EVIDENCE LOG",
+                        text = "// TELEMETRY EVIDENCE",
                         style = MaterialTheme.typography.labelSmall,
                         color = TextMuted,
                         fontFamily = FontFamily.Monospace,
@@ -768,7 +812,7 @@ fun ReportDetailView(
             }
         }
 
-        // 7. REPRODUCTION GUIDANCE — STEPS TO REPRODUCE
+        // 8. SUGGESTED REPRODUCTION CONDITIONS
         val stepsList = if (report.reproductionSteps.isNotEmpty()) {
             report.reproductionSteps
         } else {
@@ -778,7 +822,7 @@ fun ReportDetailView(
         if (stepsList.isNotEmpty()) {
             item {
                 Text(
-                    text = "// REPRODUCTION GUIDANCE — STEPS TO REPRODUCE",
+                    text = "// SUGGESTED REPRODUCTION CONDITIONS",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     fontFamily = FontFamily.Monospace,
@@ -827,7 +871,7 @@ fun ReportDetailView(
             }
         }
 
-        // 8. CONFIDENCE SCORE
+        // 9. CONDITION SCORE
         item {
             Box(
                 modifier = Modifier
@@ -843,7 +887,7 @@ fun ReportDetailView(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = "CONFIDENCE SCORE",
+                        text = report.scoreTitle.ifBlank { "CONDITION SCORE" },
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
                         color = TextMuted,

@@ -15,7 +15,8 @@ data class CaptureSession(
     val conditions: Map<String, String> = emptyMap(),
     val summary: String? = null,
     val isSimulated: Boolean = false,
-    val dataSource: String = "REAL DEVICE TELEMETRY"
+    val dataSource: String = "REAL DEVICE TELEMETRY",
+    val telemetryHistory: List<TelemetrySnapshot> = emptyList()
 ) {
     val formattedDuration: String
         get() {

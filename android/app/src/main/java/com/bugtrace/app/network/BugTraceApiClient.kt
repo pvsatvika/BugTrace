@@ -61,6 +61,21 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
                 put("cpu", cpuVal)
                 put("timestamp", isoTimestamp)
                 put("is_simulated", telemetry.isSimulated)
+
+                val historyArray = JSONArray()
+                telemetry.telemetryHistory.forEach { snap ->
+                    val snapObj = JSONObject()
+                    val snapIso = dateFormat.format(Date(snap.timestampMs))
+                    snapObj.put("timestamp", snapIso)
+                    snapObj.put("battery", snap.batteryPercent)
+                    snapObj.put("is_charging", snap.isCharging)
+                    snapObj.put("orientation", snap.orientation.lowercase())
+                    snapObj.put("network", snap.networkState.lowercase())
+                    val snapCpu = if (snap.cpuSummary.contains("85%")) 85.0 else 45.0
+                    snapObj.put("cpu", snapCpu)
+                    historyArray.put(snapObj)
+                }
+                put("telemetry_history", historyArray)
             }
 
             OutputStreamWriter(connection.outputStream).use { writer ->
@@ -196,6 +211,14 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
         val dataSourceVal = json.optString("data_source", "REAL DEVICE TELEMETRY")
         val isSimulatedVal = json.optBoolean("is_simulated", dataSourceVal.contains("SIMULATED", ignoreCase = true))
 
+        val orientationHistList = mutableListOf<String>()
+        val orientArray = json.optJSONArray("orientation_history")
+        if (orientArray != null) {
+            for (i in 0 until orientArray.length()) {
+                orientationHistList.add(orientArray.optString(i, ""))
+            }
+        }
+
         return BugReport(
             id = idVal,
             reportId = reportIdVal,
@@ -212,7 +235,11 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
             stepsToReproduce = stepsToReproduceList,
             deviceContext = deviceContextMap,
             evidence = evidenceList,
-            timestamp = json.optString("timestamp", "")
+            timestamp = json.optString("timestamp", ""),
+            orientationHistory = orientationHistList,
+            orientationChangeCount = json.optInt("orientation_change_count", maxOf(0, orientationHistList.size - 1)),
+            snapshotCount = json.optInt("snapshot_count", maxOf(1, orientationHistList.size)),
+            scoreTitle = json.optString("score_title", "CONDITION SCORE")
         )
     }
 }

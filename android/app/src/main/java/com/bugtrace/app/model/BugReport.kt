@@ -16,5 +16,9 @@ data class BugReport(
     val stepsToReproduce: List<String> = emptyList(),
     val deviceContext: Map<String, String> = emptyMap(),
     val evidence: List<String> = emptyList(),
-    val timestamp: String = ""
+    val timestamp: String = "",
+    val orientationHistory: List<String> = emptyList(),
+    val orientationChangeCount: Int = 0,
+    val snapshotCount: Int = 1,
+    val scoreTitle: String = "CONDITION SCORE"
 )

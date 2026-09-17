@@ -32,36 +32,71 @@ class TelemetryCollector private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var captureJob: Job? = null
+    private val currentSessionHistory = mutableListOf<com.bugtrace.app.model.TelemetrySnapshot>()
 
     init {
         // Initial single read
         updateTelemetry()
     }
 
+    private fun createSnapshot(): com.bugtrace.app.model.TelemetrySnapshot {
+        val (batteryLevel, isCharging) = getBatteryInfo()
+        val networkState = getNetworkState()
+        val cpuSummary = getCpuSummary()
+        val currentOrientation = getOrientationFromContext()
+        return com.bugtrace.app.model.TelemetrySnapshot(
+            timestampMs = System.currentTimeMillis(),
+            batteryPercent = batteryLevel,
+            isCharging = isCharging,
+            orientation = currentOrientation,
+            networkState = networkState,
+            cpuSummary = cpuSummary
+        )
+    }
+
     fun startCapture() {
         if (captureJob?.isActive == true) return
 
-        _telemetryState.value = _telemetryState.value.copy(
-            isCapturing = true,
-            elapsedSeconds = 0
-        )
+        synchronized(currentSessionHistory) {
+            currentSessionHistory.clear()
+            val initialSnap = createSnapshot()
+            currentSessionHistory.add(initialSnap)
+            _telemetryState.value = _telemetryState.value.copy(
+                isCapturing = true,
+                elapsedSeconds = 0,
+                telemetryHistory = listOf(initialSnap)
+            )
+        }
 
         captureJob = scope.launch {
             while (isActive) {
                 updateTelemetry()
                 delay(1000) // Refresh telemetry every 1 second
+                val snap = createSnapshot()
+                val updatedList = synchronized(currentSessionHistory) {
+                    currentSessionHistory.add(snap)
+                    currentSessionHistory.toList()
+                }
                 _telemetryState.value = _telemetryState.value.copy(
-                    elapsedSeconds = _telemetryState.value.elapsedSeconds + 1
+                    elapsedSeconds = _telemetryState.value.elapsedSeconds + 1,
+                    telemetryHistory = updatedList
                 )
             }
         }
     }
 
-    fun stopCapture() {
+    fun stopCapture(): List<com.bugtrace.app.model.TelemetrySnapshot> {
         captureJob?.cancel()
         captureJob = null
-        _telemetryState.value = _telemetryState.value.copy(isCapturing = false)
+        val finalHistory = synchronized(currentSessionHistory) {
+            currentSessionHistory.toList()
+        }
+        _telemetryState.value = _telemetryState.value.copy(
+            isCapturing = false,
+            telemetryHistory = finalHistory
+        )
         updateTelemetry()
+        return finalHistory
     }
 
     fun toggleCapture() {
