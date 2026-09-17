@@ -6,6 +6,9 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
+import com.bugtrace.app.data.local.BugReportStore
+import com.bugtrace.app.data.local.CaptureSessionStore
+import com.bugtrace.app.repository.CaptureHistoryRepository
 import com.bugtrace.app.repository.ReportRepository
 import com.bugtrace.app.telemetry.TelemetryCollector
 import com.bugtrace.app.ui.screens.MainScreen
@@ -15,13 +18,19 @@ import com.bugtrace.app.ui.theme.DarkBackground
 class MainActivity : ComponentActivity() {
 
     private lateinit var telemetryCollector: TelemetryCollector
+    private lateinit var sessionStore: CaptureSessionStore
+    private lateinit var historyRepository: CaptureHistoryRepository
+    private lateinit var reportStore: BugReportStore
     private lateinit var reportRepository: ReportRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        telemetryCollector = TelemetryCollector(applicationContext)
-        reportRepository = ReportRepository()
+        telemetryCollector = TelemetryCollector.getInstance(applicationContext)
+        sessionStore = CaptureSessionStore(applicationContext)
+        historyRepository = CaptureHistoryRepository(sessionStore)
+        reportStore = BugReportStore(applicationContext)
+        reportRepository = ReportRepository(historyRepository = historyRepository, reportStore = reportStore)
 
         setContent {
             BugTraceTheme {
@@ -31,7 +40,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     MainScreen(
                         collector = telemetryCollector,
-                        reportRepository = reportRepository
+                        reportRepository = reportRepository,
+                        historyRepository = historyRepository
                     )
                 }
             }
@@ -40,8 +50,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        if (::telemetryCollector.isInitialized) {
-            telemetryCollector.cleanUp()
+        if (isFinishing) {
+            if (::telemetryCollector.isInitialized) {
+                telemetryCollector.cleanUp()
+            }
+            if (::reportRepository.isInitialized) {
+                reportRepository.cleanUp()
+            }
         }
     }
 }

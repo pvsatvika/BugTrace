@@ -3,72 +3,109 @@ from typing import Dict, Any, List
 from app.models import TelemetryLogInput, BugReport
 
 def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str) -> BugReport:
-    detected_conditions: Dict[str, Any] = {}
-    triggered_labels: List[str] = []
-    steps: List[str] = ["Open the application"]
+    detected_conditions_map: Dict[str, Any] = {}
+    observed_conditions_list: List[str] = []
+    evidence_list: List[str] = []
+    repro_implications: List[str] = []
+    title_parts: List[str] = []
 
-    # Rule 1: Battery < 20%
+    # Rule 1: LOW_BATTERY (< 20%)
     if telemetry.battery is not None and telemetry.battery < 20:
-        detected_conditions["battery"] = f"<{telemetry.battery}%" if telemetry.battery < 20 else "<20%"
-        triggered_labels.append("low battery")
-        steps.append("Drain device battery to under 20%")
+        detected_conditions_map["battery"] = f"<{telemetry.battery}%"
+        observed_conditions_list.append(f"Battery below 20% ({telemetry.battery}%)")
+        evidence_list.append(f"Battery telemetry reported {telemetry.battery}%")
+        repro_implications.append("Ensure device battery is below 20%.")
+        title_parts.append("low battery")
 
-    # Rule 2: Orientation == "landscape"
+    # Rule 2: LANDSCAPE (orientation == "landscape")
     if telemetry.orientation and telemetry.orientation.lower() == "landscape":
-        detected_conditions["orientation"] = "landscape"
-        triggered_labels.append("landscape orientation")
-        steps.append("Rotate the device to landscape")
+        detected_conditions_map["orientation"] = "landscape"
+        observed_conditions_list.append("Device in landscape orientation")
+        evidence_list.append("Orientation telemetry reported LANDSCAPE")
+        repro_implications.append("Rotate the device to landscape orientation.")
+        title_parts.append("landscape orientation")
 
-    # Rule 3: Network == "weak" or "offline"
+    # Rule 3: NETWORK (weak or offline)
     if telemetry.network and telemetry.network.lower() in ["weak", "offline"]:
         net_val = telemetry.network.lower()
-        detected_conditions["network"] = net_val
-        triggered_labels.append(f"{net_val} network")
-        steps.append(f"Set device network status to {net_val}")
+        detected_conditions_map["network"] = net_val
+        observed_conditions_list.append(f"Weak or unavailable network connection ({net_val.upper()})")
+        evidence_list.append(f"Network telemetry reported {net_val.upper()}")
+        repro_implications.append(f"Set network connectivity to {net_val}.")
+        title_parts.append(f"{net_val} network")
 
-    # Rule 4: CPU > 80%
+    # Rule 4: HIGH_CPU (> 80%)
     if telemetry.cpu is not None and telemetry.cpu > 80:
-        detected_conditions["cpu"] = f">{telemetry.cpu}%" if telemetry.cpu > 80 else ">80%"
-        triggered_labels.append("high CPU usage")
-        steps.append("Increase CPU load above 80%")
+        detected_conditions_map["cpu"] = f">{telemetry.cpu}%"
+        observed_conditions_list.append(f"High CPU activity detected ({telemetry.cpu}%)")
+        evidence_list.append(f"CPU telemetry reported {telemetry.cpu}% load")
+        repro_implications.append("Increase system CPU load above 80%.")
+        title_parts.append("high CPU load")
 
-    steps.append("Reproduce the reported interaction")
+    # Always capture non-anomalous telemetry evidence too
+    if telemetry.battery is not None and telemetry.battery >= 20:
+        evidence_list.append(f"Battery telemetry reported {telemetry.battery}%")
+    if telemetry.orientation and telemetry.orientation.lower() != "landscape":
+        evidence_list.append(f"Orientation telemetry reported {telemetry.orientation.upper()}")
+    if telemetry.network and telemetry.network.lower() not in ["weak", "offline"]:
+        evidence_list.append(f"Network telemetry reported {telemetry.network}")
 
-    # Determine status & confidence
-    num_conditions = len(detected_conditions)
+    # Build numbered reproduction sequence
+    repro_sequence: List[str] = ["Start the application."]
+    for step in repro_implications:
+        repro_sequence.append(step)
+    repro_sequence.append("Perform the action being tested.")
+    repro_sequence.append("Observe the resulting application behavior.")
+
+    # Status, Confidence, Title & Summary (Neutral, non-false-claiming wording)
+    is_simulated = bool(telemetry.is_simulated)
+    data_source = "SIMULATED DEMO DATA" if is_simulated else "REAL DEVICE TELEMETRY"
+    capture_type_label = "demo capture" if is_simulated else "capture"
+
+    num_conditions = len(detected_conditions_map)
     if num_conditions > 0:
-        status = "Bug Reproducible"
-        # Confidence formula: 70 base + 11 per condition up to max 98
-        confidence = min(98, 70 + (num_conditions * 11))
+        status = "ANALYZED"
+        confidence = min(98, 70 + (num_conditions * 12))
         if num_conditions == 1:
-            summary = f"Issue is associated with {triggered_labels[0]}."
+            title = f"{title_parts[0].capitalize()} condition detected"
+            summary = f"Observed condition ({title_parts[0]}) associated with this {capture_type_label}."
         elif num_conditions == 2:
-            summary = f"Issue is strongly associated with {triggered_labels[0]} and {triggered_labels[1]}."
+            title = f"{title_parts[0].capitalize()} + {title_parts[1]} condition detected"
+            summary = f"Observed conditions ({title_parts[0]} and {title_parts[1]}) associated with this {capture_type_label}."
         else:
-            joined = ", ".join(triggered_labels[:-1]) + f", and {triggered_labels[-1]}"
-            summary = f"Issue is strongly associated with {joined}."
+            joined = ", ".join(title_parts[:-1]) + f", and {title_parts[-1]}"
+            title = f"Multiple conditions detected ({num_conditions})"
+            summary = f"Observed conditions ({joined}) associated with this {capture_type_label}."
     else:
-        status = "No Anomaly Detected"
+        status = "ANALYZED"
         confidence = 50
-        summary = "No critical telemetry anomaly conditions detected."
+        title = "No abnormal telemetry conditions detected"
+        summary = f"No critical telemetry anomaly conditions detected during {capture_type_label} session."
 
     device_context = {
-        "battery": telemetry.battery,
-        "orientation": telemetry.orientation,
-        "network": telemetry.network,
-        "cpu": telemetry.cpu,
-        "raw_timestamp": telemetry.timestamp
+        "battery": f"{telemetry.battery}%" if telemetry.battery is not None else "N/A",
+        "charging": False,
+        "orientation": (telemetry.orientation or "PORTRAIT").upper(),
+        "network": telemetry.network or "Unknown",
+        "cpu": f"{telemetry.cpu}%" if telemetry.cpu is not None else "Standard Core Info"
     }
 
     current_timestamp = datetime.now(timezone.utc).isoformat()
 
     return BugReport(
         id=report_id,
+        report_id=report_id,
+        log_id=log_id,
+        title=title,
         status=status,
         confidence=confidence,
         summary=summary,
-        conditions=detected_conditions,
-        steps_to_reproduce=steps,
+        data_source=data_source,
+        observed_conditions=observed_conditions_list,
+        conditions=detected_conditions_map,
+        reproduction_steps=repro_sequence,
+        steps_to_reproduce=repro_sequence,
         device_context=device_context,
+        evidence=evidence_list,
         timestamp=current_timestamp
     )

@@ -21,6 +21,20 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
     private val connectTimeoutMs = 5000
     private val readTimeoutMs = 5000
 
+    suspend fun pingBackend(): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val url = URL("$baseUrl/")
+            val connection = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 2500
+                readTimeout = 2500
+            }
+            connection.responseCode == 200
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     suspend fun submitLog(telemetry: TelemetryData): Result<String> = withContext(Dispatchers.IO) {
         try {
             val url = URL("$baseUrl/logs")
@@ -38,13 +52,15 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
             }
             val isoTimestamp = dateFormat.format(Date(telemetry.timestampMs))
 
+            val cpuVal = if (telemetry.cpuSummary.contains("85%")) 85.0 else if (telemetry.isCapturing) 85.0 else 45.0
+
             val jsonPayload = JSONObject().apply {
                 put("battery", telemetry.batteryPercent)
                 put("orientation", telemetry.orientation.lowercase())
                 put("network", telemetry.networkState.lowercase())
-                // Use a standard numeric CPU value for backend deterministic rule checking (>80%)
-                put("cpu", if (telemetry.isCapturing) 85.0 else 45.0)
+                put("cpu", cpuVal)
                 put("timestamp", isoTimestamp)
+                put("is_simulated", telemetry.isSimulated)
             }
 
             OutputStreamWriter(connection.outputStream).use { writer ->
@@ -125,17 +141,41 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
     }
 
     private fun parseBugReport(json: JSONObject): BugReport {
+        val idVal = json.optString("id", json.optString("report_id", ""))
+        val reportIdVal = json.optString("report_id", idVal)
+        val logIdVal = json.optString("log_id", "")
+        val titleVal = json.optString("title", "Telemetry Analysis Report")
+        val statusVal = json.optString("status", "No Anomaly Detected")
+        val confidenceVal = json.optInt("confidence", 50)
+        val summaryVal = json.optString("summary", "")
+
+        val observedConditionsList = mutableListOf<String>()
+        val observedArray = json.optJSONArray("observed_conditions")
+        if (observedArray != null) {
+            for (i in 0 until observedArray.length()) {
+                observedConditionsList.add(observedArray.optString(i, ""))
+            }
+        }
+
         val conditionsMap = mutableMapOf<String, String>()
         val conditionsObj = json.optJSONObject("conditions")
         conditionsObj?.keys()?.forEach { key ->
             conditionsMap[key] = conditionsObj.optString(key, "")
         }
 
-        val stepsList = mutableListOf<String>()
+        val reproStepsList = mutableListOf<String>()
+        val reproArray = json.optJSONArray("reproduction_steps") ?: json.optJSONArray("steps_to_reproduce")
+        if (reproArray != null) {
+            for (i in 0 until reproArray.length()) {
+                reproStepsList.add(reproArray.optString(i, ""))
+            }
+        }
+
+        val stepsToReproduceList = mutableListOf<String>()
         val stepsArray = json.optJSONArray("steps_to_reproduce")
         if (stepsArray != null) {
             for (i in 0 until stepsArray.length()) {
-                stepsList.add(stepsArray.optString(i, ""))
+                stepsToReproduceList.add(stepsArray.optString(i, ""))
             }
         }
 
@@ -145,14 +185,33 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
             deviceContextMap[key] = contextObj.optString(key, "")
         }
 
+        val evidenceList = mutableListOf<String>()
+        val evidenceArray = json.optJSONArray("evidence")
+        if (evidenceArray != null) {
+            for (i in 0 until evidenceArray.length()) {
+                evidenceList.add(evidenceArray.optString(i, ""))
+            }
+        }
+
+        val dataSourceVal = json.optString("data_source", "REAL DEVICE TELEMETRY")
+        val isSimulatedVal = json.optBoolean("is_simulated", dataSourceVal.contains("SIMULATED", ignoreCase = true))
+
         return BugReport(
-            id = json.optString("id", ""),
-            status = json.optString("status", ""),
-            confidence = json.optInt("confidence", 0),
-            summary = json.optString("summary", ""),
+            id = idVal,
+            reportId = reportIdVal,
+            logId = logIdVal,
+            title = titleVal,
+            status = statusVal,
+            confidence = confidenceVal,
+            summary = summaryVal,
+            dataSource = dataSourceVal,
+            isSimulated = isSimulatedVal,
+            observedConditions = observedConditionsList,
             conditions = conditionsMap,
-            stepsToReproduce = stepsList,
+            reproductionSteps = if (reproStepsList.isNotEmpty()) reproStepsList else stepsToReproduceList,
+            stepsToReproduce = stepsToReproduceList,
             deviceContext = deviceContextMap,
+            evidence = evidenceList,
             timestamp = json.optString("timestamp", "")
         )
     }

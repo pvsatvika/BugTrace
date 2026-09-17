@@ -1,6 +1,5 @@
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
 
 class TelemetryLogInput(BaseModel):
     battery: Optional[int] = Field(None, description="Battery level percentage (0-100)")
@@ -8,6 +7,7 @@ class TelemetryLogInput(BaseModel):
     network: Optional[str] = Field(None, description="Network connection state (e.g. wifi, cellular, weak, offline)")
     cpu: Optional[float] = Field(None, description="CPU usage percentage (0-100)")
     timestamp: Optional[str] = Field(None, description="Timestamp of telemetry capture")
+    is_simulated: Optional[bool] = Field(False, description="Whether this telemetry is simulated demo data")
 
 class LogRecord(BaseModel):
     id: str
@@ -16,10 +16,17 @@ class LogRecord(BaseModel):
 
 class BugReport(BaseModel):
     id: str
+    report_id: Optional[str] = None
+    log_id: Optional[str] = None
+    title: Optional[str] = None
     status: str
     confidence: int
     summary: str
-    conditions: Dict[str, Any]
-    steps_to_reproduce: List[str]
-    device_context: Dict[str, Any]
+    data_source: str = Field("REAL DEVICE TELEMETRY", description="Data source indicator")
+    observed_conditions: List[str] = Field(default_factory=list)
+    conditions: Dict[str, Any] = Field(default_factory=dict)
+    reproduction_steps: List[str] = Field(default_factory=list)
+    steps_to_reproduce: List[str] = Field(default_factory=list)
+    device_context: Dict[str, Any] = Field(default_factory=dict)
+    evidence: List[str] = Field(default_factory=list)
     timestamp: str

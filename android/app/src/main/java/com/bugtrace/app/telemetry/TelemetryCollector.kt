@@ -14,7 +14,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class TelemetryCollector(private val context: Context) {
+class TelemetryCollector private constructor(private val context: Context) {
+
+    companion object {
+        @Volatile
+        private var INSTANCE: TelemetryCollector? = null
+
+        fun getInstance(context: Context): TelemetryCollector {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: TelemetryCollector(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+    }
 
     private val _telemetryState = MutableStateFlow(TelemetryData())
     val telemetryState: StateFlow<TelemetryData> = _telemetryState.asStateFlow()
@@ -30,12 +41,18 @@ class TelemetryCollector(private val context: Context) {
     fun startCapture() {
         if (captureJob?.isActive == true) return
 
-        _telemetryState.value = _telemetryState.value.copy(isCapturing = true)
+        _telemetryState.value = _telemetryState.value.copy(
+            isCapturing = true,
+            elapsedSeconds = 0
+        )
 
         captureJob = scope.launch {
             while (isActive) {
                 updateTelemetry()
                 delay(1000) // Refresh telemetry every 1 second
+                _telemetryState.value = _telemetryState.value.copy(
+                    elapsedSeconds = _telemetryState.value.elapsedSeconds + 1
+                )
             }
         }
     }
@@ -130,19 +147,21 @@ class TelemetryCollector(private val context: Context) {
             val cores = Runtime.getRuntime().availableProcessors()
             val processCpuMs = Process.getElapsedCpuTime()
             val cpuSeconds = processCpuMs / 1000.0
-            "${cores} Cores (App CPU: ${String.format("%.1f", cpuSeconds)}s)"
+            "${cores} Cores (App: ${String.format("%.1f", cpuSeconds)}s)"
         } catch (e: Exception) {
             val cores = Runtime.getRuntime().availableProcessors()
-            "${cores} Cores (Sys Restricted)"
+            "${cores} Cores (Restricted)"
         }
     }
 
     private fun getOrientationFromContext(): String {
-        val configOrientation = context.resources.configuration.orientation
-        return when (configOrientation) {
+        val sysOrientation = android.content.res.Resources.getSystem().configuration.orientation
+        val ctxOrientation = context.resources.configuration.orientation
+        val orientationCode = if (sysOrientation != Configuration.ORIENTATION_UNDEFINED) sysOrientation else ctxOrientation
+        return when (orientationCode) {
             Configuration.ORIENTATION_LANDSCAPE -> "Landscape"
             Configuration.ORIENTATION_PORTRAIT -> "Portrait"
-            else -> "Portrait"
+            else -> _telemetryState.value.orientation.ifEmpty { "Portrait" }
         }
     }
 

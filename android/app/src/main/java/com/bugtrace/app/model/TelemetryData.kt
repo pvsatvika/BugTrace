@@ -7,8 +7,17 @@ data class TelemetryData(
     val networkState: String = "Unknown",
     val cpuSummary: String = "N/A",
     val isCapturing: Boolean = false,
-    val timestampMs: Long = System.currentTimeMillis()
+    val elapsedSeconds: Int = 0,
+    val timestampMs: Long = System.currentTimeMillis(),
+    val isSimulated: Boolean = false
 ) {
     val isLowBattery: Boolean
         get() = batteryPercent in 1..19
+
+    val formattedElapsedTime: String
+        get() {
+            val mins = elapsedSeconds / 60
+            val secs = elapsedSeconds % 60
+            return String.format("%02d:%02d", mins, secs)
+        }
 }

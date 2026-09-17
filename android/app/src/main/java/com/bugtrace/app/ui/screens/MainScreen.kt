@@ -1,66 +1,112 @@
 package com.bugtrace.app.ui.screens
 
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.bugtrace.app.repository.CaptureHistoryRepository
 import com.bugtrace.app.repository.ReportRepository
 import com.bugtrace.app.telemetry.TelemetryCollector
 import com.bugtrace.app.ui.theme.*
+import kotlinx.coroutines.launch
 
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     CAPTURE("Capture", Icons.Default.Sensors),
+    TIMELINE("Timeline", Icons.AutoMirrored.Filled.List),
     REPORTS("Reports", Icons.Default.Assessment)
 }
 
 @Composable
 fun MainScreen(
     collector: TelemetryCollector,
-    reportRepository: ReportRepository
+    reportRepository: ReportRepository,
+    historyRepository: CaptureHistoryRepository
 ) {
     var selectedTab by remember { mutableStateOf(NavigationTab.CAPTURE) }
+    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         bottomBar = {
-            NavigationBar(
-                containerColor = DarkSurface,
-                contentColor = TextPrimary,
-                tonalElevation = 0.dp,
-                modifier = Modifier.border(1.dp, DarkBorder)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DarkSurface)
+                    .border(1.dp, DarkCardBorder)
             ) {
-                NavigationTab.entries.forEach { tab ->
-                    val selected = selectedTab == tab
-                    NavigationBarItem(
-                        selected = selected,
-                        onClick = { selectedTab = tab },
-                        icon = {
-                            Icon(
-                                imageVector = tab.icon,
-                                contentDescription = tab.title
-                            )
-                        },
-                        label = {
-                            Text(
-                                text = tab.title,
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        },
-                        colors = NavigationBarItemDefaults.colors(
-                            selectedIconColor = PrimaryBlue,
-                            selectedTextColor = PrimaryBlue,
-                            indicatorColor = DarkSurfaceVariant,
-                            unselectedIconColor = TextMuted,
-                            unselectedTextColor = TextMuted
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(64.dp),
+                    horizontalArrangement = Arrangement.SpaceAround,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    NavigationTab.entries.forEach { tab ->
+                        val selected = selectedTab == tab
+                        val iconColor by animateColorAsState(
+                            targetValue = if (selected) AccentCyan else TextMuted,
+                            label = "NavIconColor"
                         )
-                    )
+                        val textColor by animateColorAsState(
+                            targetValue = if (selected) TextPrimary else TextMuted,
+                            label = "NavTextColor"
+                        )
+
+                        TextButton(
+                            onClick = { selectedTab = tab },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                if (selected) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(24.dp)
+                                            .height(2.dp)
+                                            .clip(RoundedCornerShape(1.dp))
+                                            .background(AccentCyan)
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                } else {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+
+                                Icon(
+                                    imageVector = tab.icon,
+                                    contentDescription = tab.title,
+                                    tint = iconColor,
+                                    modifier = Modifier.size(20.dp)
+                                )
+
+                                Spacer(modifier = Modifier.height(2.dp))
+
+                                Text(
+                                    text = tab.title.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                                    color = textColor,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -71,7 +117,31 @@ fun MainScreen(
                 .background(DarkBackground)
         ) {
             when (selectedTab) {
-                NavigationTab.CAPTURE -> CaptureScreen(collector = collector, reportRepository = reportRepository)
+                NavigationTab.CAPTURE -> CaptureScreen(
+                    collector = collector,
+                    reportRepository = reportRepository,
+                    historyRepository = historyRepository,
+                    onViewReport = { reportId ->
+                        coroutineScope.launch {
+                            val success = reportRepository.loadReportById(reportId)
+                            if (success) {
+                                selectedTab = NavigationTab.REPORTS
+                            }
+                        }
+                    }
+                )
+                NavigationTab.TIMELINE -> CaptureTimelineScreen(
+                    historyRepository = historyRepository,
+                    reportRepository = reportRepository,
+                    onViewReport = { reportId ->
+                        coroutineScope.launch {
+                            val success = reportRepository.loadReportById(reportId)
+                            if (success) {
+                                selectedTab = NavigationTab.REPORTS
+                            }
+                        }
+                    }
+                )
                 NavigationTab.REPORTS -> ReportsScreen(reportRepository = reportRepository)
             }
         }
