@@ -1073,7 +1073,7 @@
             const statusBg = report.status === 'ANALYZED' ? 'background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;' : 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
 
             container.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; border-bottom:1px solid var(--card-border); padding-bottom:20px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; border-bottom:1px solid var(--card-border); padding-bottom:18px;">
                     <div>
                         <div style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">BUGTRACE REPORT</div>
                         <div style="font-family:var(--font-mono); font-size:22px; font-weight:800; color:var(--text-main); margin-top:2px;">${report.id || report.report_id}</div>
@@ -1130,12 +1130,15 @@
                     </div>
                 </div>
 
-                <div class="content-block" style="display:flex; justify-content:space-between; align-items:center; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:16px 20px;">
+                <div class="content-block" style="display:flex; justify-content:space-between; align-items:center; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:18px 22px; flex-wrap:wrap; gap:12px;">
                     <div>
-                        <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--accent-primary); text-transform:uppercase; letter-spacing:0.5px;">${report.score_title || 'CONDITION SCORE'}</div>
-                        <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">Observed telemetry threshold confidence metric</div>
+                        <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">${report.score_title || 'CONDITION SCORE'}</div>
+                        <div style="font-family:var(--font-mono); font-size:28px; font-weight:800; color:var(--accent-primary); margin-top:2px;">${report.confidence}%</div>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Observed telemetry threshold confidence metric</div>
                     </div>
-                    <div style="font-family:var(--font-mono); font-size:28px; font-weight:800; color:var(--accent-primary);">${report.confidence}%</div>
+                    <div style="background:rgba(37, 99, 235, 0.1); border:1px solid rgba(37, 99, 235, 0.3); border-radius:8px; padding:8px 16px; font-family:var(--font-mono); font-size:12px; font-weight:700; color:var(--accent-primary);">
+                        SCORE: ${report.confidence}%
+                    </div>
                 </div>
             `;
         }
