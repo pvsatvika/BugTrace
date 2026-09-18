@@ -1070,7 +1070,23 @@
 
             const isDemo = report.data_source.includes('SIMULATED');
             const seq = (report.orientation_history || []).join(' → ').toUpperCase();
-            const statusBg = report.status === 'ANALYZED' ? 'background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;' : 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
+            const isAnomaly = report.detection_status === 'ANOMALY DETECTED';
+            const statusBg = isAnomaly ? 'background:#fff7ed; color:#c2410c; border:1px solid #ffedd5;' : 'background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;';
+            const detStatusText = report.detection_status || (report.title.includes('NO SIGNIFICANT ANOMALY') ? 'NO SIGNIFICANT ANOMALY DETECTED' : 'ANOMALY DETECTED');
+
+            const eventTimelineHtml = (report.event_timeline && report.event_timeline.length > 0) ? `
+                <div>
+                    <div class="report-section-label">// EVENT TIMELINE</div>
+                    <div class="content-block" style="display:flex; flex-direction:column; gap:8px;">
+                        ${report.event_timeline.map(evt => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; font-family:var(--font-mono); font-size:12px;">
+                                <div><span style="color:var(--accent-primary); font-weight:700;">[ ${evt.event_type} ]</span> <span style="color:var(--text-main); font-weight:600;">${evt.description}</span></div>
+                                <span style="color:var(--text-muted); font-size:11px;">${new Date(evt.timestamp).toLocaleTimeString()}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            ` : '';
 
             container.innerHTML = `
                 <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; border-bottom:1px solid var(--card-border); padding-bottom:18px;">
@@ -1079,7 +1095,7 @@
                         <div style="font-family:var(--font-mono); font-size:22px; font-weight:800; color:var(--text-main); margin-top:2px;">${report.id || report.report_id}</div>
                     </div>
                     <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-                        <span style="${statusBg} font-family:var(--font-mono); font-size:11px; font-weight:700; padding:6px 12px; border-radius:6px; letter-spacing:0.5px;">${report.status}</span>
+                        <span style="${statusBg} font-family:var(--font-mono); font-size:11px; font-weight:700; padding:6px 12px; border-radius:6px; letter-spacing:0.5px;">${detStatusText}</span>
                         <span class="badge-source ${isDemo ? 'badge-demo' : 'badge-real'}" style="padding:6px 12px; font-size:11px;">${report.data_source}</span>
                     </div>
                 </div>
@@ -1100,6 +1116,8 @@
                         ${(report.observed_conditions || []).map(c => `<div style="background:#f1f5f9; border:1px solid #cbd5e1; color:var(--text-main); font-family:var(--font-mono); font-size:11px; font-weight:600; padding:7px 14px; border-radius:6px;">[ ${c.toUpperCase()} ]</div>`).join('')}
                     </div>
                 </div>
+
+                ${eventTimelineHtml}
 
                 ${seq ? `
                 <div>
@@ -1132,12 +1150,12 @@
 
                 <div class="content-block" style="display:flex; justify-content:space-between; align-items:center; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:18px 22px; flex-wrap:wrap; gap:12px;">
                     <div>
-                        <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">${report.score_title || 'CONDITION SCORE'}</div>
+                        <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--text-muted); text-transform:uppercase; letter-spacing:1px;">${report.score_title || 'THRESHOLD CONFIDENCE METRIC'}</div>
                         <div style="font-family:var(--font-mono); font-size:28px; font-weight:800; color:var(--accent-primary); margin-top:2px;">${report.confidence}%</div>
-                        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">Observed telemetry threshold confidence metric</div>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-top:4px;">${report.score_explanation || 'Observed telemetry threshold confidence metric'}</div>
                     </div>
                     <div style="background:rgba(37, 99, 235, 0.1); border:1px solid rgba(37, 99, 235, 0.3); border-radius:8px; padding:8px 16px; font-family:var(--font-mono); font-size:12px; font-weight:700; color:var(--accent-primary);">
-                        SCORE: ${report.confidence}%
+                        METRIC: ${report.confidence}%
                     </div>
                 </div>
             `;
