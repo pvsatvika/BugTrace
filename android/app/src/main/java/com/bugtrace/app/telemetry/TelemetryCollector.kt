@@ -33,6 +33,7 @@ class TelemetryCollector private constructor(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var captureJob: Job? = null
     private val currentSessionHistory = mutableListOf<com.bugtrace.app.model.TelemetrySnapshot>()
+    private val currentSessionEvents = mutableListOf<com.bugtrace.app.model.TelemetryEvent>()
 
     init {
         // Initial single read
@@ -85,12 +86,20 @@ class TelemetryCollector private constructor(private val context: Context) {
 
         synchronized(currentSessionHistory) {
             currentSessionHistory.clear()
+            currentSessionEvents.clear()
             val initialSnap = createSnapshot()
             currentSessionHistory.add(initialSnap)
+            val startEvent = com.bugtrace.app.model.TelemetryEvent(
+                eventType = "CAPTURE_START",
+                description = "User started real telemetry capture"
+            )
+            currentSessionEvents.add(startEvent)
+
             _telemetryState.value = _telemetryState.value.copy(
                 isCapturing = true,
                 elapsedSeconds = 0,
-                telemetryHistory = listOf(initialSnap)
+                telemetryHistory = listOf(initialSnap),
+                events = listOf(startEvent)
             )
         }
 
@@ -99,13 +108,14 @@ class TelemetryCollector private constructor(private val context: Context) {
                 updateTelemetry()
                 delay(1000) // Refresh telemetry every 1 second
                 val snap = createSnapshot()
-                val updatedList = synchronized(currentSessionHistory) {
+                val (updatedSnapshots, updatedEvents) = synchronized(currentSessionHistory) {
                     currentSessionHistory.add(snap)
-                    currentSessionHistory.toList()
+                    Pair(currentSessionHistory.toList(), currentSessionEvents.toList())
                 }
                 _telemetryState.value = _telemetryState.value.copy(
                     elapsedSeconds = _telemetryState.value.elapsedSeconds + 1,
-                    telemetryHistory = updatedList
+                    telemetryHistory = updatedSnapshots,
+                    events = updatedEvents
                 )
             }
         }
@@ -114,12 +124,18 @@ class TelemetryCollector private constructor(private val context: Context) {
     fun stopCapture(): List<com.bugtrace.app.model.TelemetrySnapshot> {
         captureJob?.cancel()
         captureJob = null
-        val finalHistory = synchronized(currentSessionHistory) {
-            currentSessionHistory.toList()
+        val stopEvent = com.bugtrace.app.model.TelemetryEvent(
+            eventType = "CAPTURE_STOP",
+            description = "User stopped telemetry capture session"
+        )
+        val (finalHistory, finalEvents) = synchronized(currentSessionHistory) {
+            currentSessionEvents.add(stopEvent)
+            Pair(currentSessionHistory.toList(), currentSessionEvents.toList())
         }
         _telemetryState.value = _telemetryState.value.copy(
             isCapturing = false,
-            telemetryHistory = finalHistory
+            telemetryHistory = finalHistory,
+            events = finalEvents
         )
         updateTelemetry()
         return finalHistory
@@ -139,7 +155,19 @@ class TelemetryCollector private constructor(private val context: Context) {
             Configuration.ORIENTATION_PORTRAIT -> "Portrait"
             else -> "Portrait"
         }
-        _telemetryState.value = _telemetryState.value.copy(orientation = orientationStr)
+        val event = com.bugtrace.app.model.TelemetryEvent(
+            eventType = "ORIENTATION_CHANGE",
+            description = "Device orientation changed to ${orientationStr.uppercase()}"
+        )
+        synchronized(currentSessionHistory) {
+            if (_telemetryState.value.isCapturing) {
+                currentSessionEvents.add(event)
+            }
+        }
+        _telemetryState.value = _telemetryState.value.copy(
+            orientation = orientationStr,
+            events = if (_telemetryState.value.isCapturing) _telemetryState.value.events + event else _telemetryState.value.events
+        )
     }
 
     fun updateTelemetry() {

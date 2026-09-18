@@ -83,6 +83,16 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
                     snapObj.put("cpu", snapCpu)
                     historyArray.put(snapObj)
                 }
+                val eventsArray = JSONArray()
+                telemetry.events.forEach { evt ->
+                    val evtObj = JSONObject()
+                    val evtIso = dateFormat.format(Date(evt.timestampMs))
+                    evtObj.put("timestamp", evtIso)
+                    evtObj.put("event_type", evt.eventType)
+                    evtObj.put("description", evt.description)
+                    eventsArray.put(evtObj)
+                }
+                put("events", eventsArray)
                 put("telemetry_history", historyArray)
             }
 

@@ -11,7 +11,8 @@ data class TelemetryData(
     val elapsedSeconds: Int = 0,
     val timestampMs: Long = System.currentTimeMillis(),
     val isSimulated: Boolean = false,
-    val telemetryHistory: List<TelemetrySnapshot> = emptyList()
+    val telemetryHistory: List<TelemetrySnapshot> = emptyList(),
+    val events: List<TelemetryEvent> = emptyList()
 ) {
     val isLowBattery: Boolean
         get() = batteryPercent in 1..19
