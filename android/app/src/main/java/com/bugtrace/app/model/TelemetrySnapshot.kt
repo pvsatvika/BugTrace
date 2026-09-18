@@ -6,5 +6,6 @@ data class TelemetrySnapshot(
     val isCharging: Boolean = false,
     val orientation: String = "Portrait",
     val networkState: String = "Unknown",
-    val cpuSummary: String = "N/A"
+    val cpuSummary: String = "N/A",
+    val cpuPercent: Double = 0.0
 )

@@ -52,7 +52,11 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
             }
             val isoTimestamp = dateFormat.format(Date(telemetry.timestampMs))
 
-            val cpuVal = if (telemetry.cpuSummary.contains("85%")) 85.0 else if (telemetry.isCapturing) 85.0 else 45.0
+            val cpuVal = when {
+                telemetry.cpuPercent > 0.0 -> telemetry.cpuPercent
+                telemetry.cpuSummary.contains("85%") -> 85.0
+                else -> 15.0
+            }
 
             val jsonPayload = JSONObject().apply {
                 put("battery", telemetry.batteryPercent)
@@ -71,7 +75,11 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
                     snapObj.put("is_charging", snap.isCharging)
                     snapObj.put("orientation", snap.orientation.lowercase())
                     snapObj.put("network", snap.networkState.lowercase())
-                    val snapCpu = if (snap.cpuSummary.contains("85%")) 85.0 else 45.0
+                    val snapCpu = when {
+                        snap.cpuPercent > 0.0 -> snap.cpuPercent
+                        snap.cpuSummary.contains("85%") -> 85.0
+                        else -> 15.0
+                    }
                     snapObj.put("cpu", snapCpu)
                     historyArray.put(snapObj)
                 }

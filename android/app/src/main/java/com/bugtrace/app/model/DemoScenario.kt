@@ -18,6 +18,7 @@ data class DemoScenario(
             orientation = orientation,
             networkState = networkState,
             cpuSummary = cpuSummary,
+            cpuPercent = cpuLoadPercent,
             isCapturing = false,
             elapsedSeconds = 5,
             timestampMs = System.currentTimeMillis(),

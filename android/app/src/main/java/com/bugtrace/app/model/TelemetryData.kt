@@ -6,6 +6,7 @@ data class TelemetryData(
     val orientation: String = "Portrait",
     val networkState: String = "Unknown",
     val cpuSummary: String = "N/A",
+    val cpuPercent: Double = 0.0,
     val isCapturing: Boolean = false,
     val elapsedSeconds: Int = 0,
     val timestampMs: Long = System.currentTimeMillis(),

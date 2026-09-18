@@ -36,19 +36,23 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
 
     # Rule 4: HIGH_CPU (> 80%)
     if telemetry.cpu is not None and telemetry.cpu > 80:
-        detected_conditions_map["cpu"] = f">{telemetry.cpu}%"
-        observed_conditions_list.append(f"CPU activity reached {telemetry.cpu}%, crossing threshold")
-        evidence_list.append(f"CPU telemetry reached {telemetry.cpu}% load.")
-        repro_implications.append("Maintain CPU activity above the configured threshold.")
+        cpu_val_str = f"{telemetry.cpu:.1f}%" if isinstance(telemetry.cpu, float) else f"{telemetry.cpu}%"
+        detected_conditions_map["cpu"] = f">{cpu_val_str}"
+        observed_conditions_list.append(f"CPU activity reached {cpu_val_str}, crossing 80% threshold")
+        evidence_list.append(f"CPU telemetry reported high load at {cpu_val_str}.")
+        repro_implications.append("Maintain CPU activity above 80% threshold.")
         title_parts.append("high CPU load")
 
-    # Always capture non-anomalous telemetry evidence too
+    # Capture non-anomalous telemetry evidence for observed device context
     if telemetry.battery is not None and telemetry.battery >= 20:
         evidence_list.append(f"Battery telemetry reported {telemetry.battery}%.")
     if telemetry.orientation and telemetry.orientation.lower() != "landscape":
         evidence_list.append(f"Orientation telemetry reported {telemetry.orientation.upper()}.")
     if telemetry.network and telemetry.network.lower() not in ["weak", "offline"]:
         evidence_list.append(f"Network telemetry observed {telemetry.network}.")
+    if telemetry.cpu is not None and telemetry.cpu <= 80:
+        cpu_val_str = f"{telemetry.cpu:.1f}%" if isinstance(telemetry.cpu, float) else f"{telemetry.cpu}%"
+        evidence_list.append(f"CPU load observed at normal level ({cpu_val_str}).")
 
     # Inspect telemetry history sequence if available
     history = telemetry.telemetry_history or []
@@ -56,7 +60,7 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     orientations_seen: List[str] = []
 
     if history:
-        evidence_list.append(f"{snapshot_count} telemetry snapshots were recorded during this capture.")
+        evidence_list.append(f"{snapshot_count} telemetry snapshots recorded during this capture window.")
         for snap in history:
             if snap.orientation:
                 o_str = snap.orientation.upper()
@@ -81,7 +85,7 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         repro_sequence.append(step)
     repro_sequence.append("Observe the resulting application behavior.")
 
-    # Status, Confidence, Title & Summary (Neutral, non-false-claiming wording)
+    # Status, Confidence, Title & Summary
     is_simulated = bool(telemetry.is_simulated)
     data_source = "SIMULATED DEMO DATA" if is_simulated else "REAL DEVICE TELEMETRY"
     capture_type_label = "demo capture" if is_simulated else "capture"
@@ -102,8 +106,10 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     else:
         status = "ANALYZED"
         confidence = 50
-        title = "NO ABNORMAL TELEMETRY CONDITIONS DETECTED"
+        title = "NO SIGNIFICANT ANOMALY DETECTED"
         summary = f"No critical telemetry anomaly conditions detected during {capture_type_label} session."
+        if not observed_conditions_list:
+            observed_conditions_list = ["No threshold conditions breached during capture session."]
 
     device_context = {
         "battery": f"{telemetry.battery}%" if telemetry.battery is not None else "N/A",

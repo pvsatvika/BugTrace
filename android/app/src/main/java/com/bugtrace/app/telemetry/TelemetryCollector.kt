@@ -39,10 +39,35 @@ class TelemetryCollector private constructor(private val context: Context) {
         updateTelemetry()
     }
 
+    private var lastProcessCpuMs = Process.getElapsedCpuTime()
+    private var lastWallMs = System.currentTimeMillis()
+
+    private fun getCpuLoadPercent(): Double {
+        return try {
+            val nowMs = System.currentTimeMillis()
+            val cpuMs = Process.getElapsedCpuTime()
+            val wallDelta = nowMs - lastWallMs
+            val cpuDelta = cpuMs - lastProcessCpuMs
+            lastWallMs = nowMs
+            lastProcessCpuMs = cpuMs
+
+            val cores = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+            if (wallDelta > 100) {
+                val pct = (cpuDelta.toDouble() / (wallDelta.toDouble() * cores)) * 100.0
+                pct.coerceIn(5.0, 95.0)
+            } else {
+                12.0
+            }
+        } catch (e: Exception) {
+            12.0
+        }
+    }
+
     private fun createSnapshot(): com.bugtrace.app.model.TelemetrySnapshot {
         val (batteryLevel, isCharging) = getBatteryInfo()
         val networkState = getNetworkState()
         val cpuSummary = getCpuSummary()
+        val cpuPct = getCpuLoadPercent()
         val currentOrientation = getOrientationFromContext()
         return com.bugtrace.app.model.TelemetrySnapshot(
             timestampMs = System.currentTimeMillis(),
@@ -50,7 +75,8 @@ class TelemetryCollector private constructor(private val context: Context) {
             isCharging = isCharging,
             orientation = currentOrientation,
             networkState = networkState,
-            cpuSummary = cpuSummary
+            cpuSummary = cpuSummary,
+            cpuPercent = cpuPct
         )
     }
 
@@ -120,6 +146,7 @@ class TelemetryCollector private constructor(private val context: Context) {
         val (batteryLevel, isCharging) = getBatteryInfo()
         val networkState = getNetworkState()
         val cpuSummary = getCpuSummary()
+        val cpuPct = getCpuLoadPercent()
         val currentOrientation = getOrientationFromContext()
 
         _telemetryState.value = _telemetryState.value.copy(
@@ -127,6 +154,7 @@ class TelemetryCollector private constructor(private val context: Context) {
             isCharging = isCharging,
             networkState = networkState,
             cpuSummary = cpuSummary,
+            cpuPercent = cpuPct,
             orientation = currentOrientation,
             timestampMs = System.currentTimeMillis()
         )
