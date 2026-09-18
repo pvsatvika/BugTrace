@@ -12,7 +12,7 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     # Rule 1: LOW_BATTERY (< 20%)
     if telemetry.battery is not None and telemetry.battery < 20:
         detected_conditions_map["battery"] = f"<{telemetry.battery}%"
-        observed_conditions_list.append(f"Battery below 20% ({telemetry.battery}%)")
+        observed_conditions_list.append(f"Battery below 20% threshold ({telemetry.battery}%)")
         evidence_list.append(f"Battery telemetry reported {telemetry.battery}%.")
         repro_implications.append("Maintain device battery level below 20%.")
         title_parts.append("low battery")
@@ -54,18 +54,36 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         cpu_val_str = f"{telemetry.cpu:.1f}%" if isinstance(telemetry.cpu, float) else f"{telemetry.cpu}%"
         evidence_list.append(f"CPU load observed at normal level ({cpu_val_str}).")
 
-    # Inspect telemetry history sequence if available
+    # Inspect telemetry history sequence & client events
     history = telemetry.telemetry_history or []
+    client_events = telemetry.events or []
     snapshot_count = len(history)
     orientations_seen: List[str] = []
+    event_timeline: List[Dict[str, Any]] = []
+
+    # Map client events into timeline
+    for evt in client_events:
+        event_timeline.append({
+            "timestamp": evt.timestamp or datetime.now(timezone.utc).isoformat(),
+            "event_type": evt.event_type or "EVENT",
+            "description": evt.description or "Device event logged",
+            "details": evt.details or {}
+        })
 
     if history:
-        evidence_list.append(f"{snapshot_count} telemetry snapshots recorded during this capture window.")
-        for snap in history:
+        evidence_list.append(f"{snapshot_count} telemetry snapshots recorded during capture window.")
+        for idx, snap in enumerate(history):
             if snap.orientation:
                 o_str = snap.orientation.upper()
                 if not orientations_seen or orientations_seen[-1] != o_str:
                     orientations_seen.append(o_str)
+                    if idx > 0:
+                        event_timeline.append({
+                            "timestamp": snap.timestamp or datetime.now(timezone.utc).isoformat(),
+                            "event_type": "ORIENTATION_CHANGE",
+                            "description": f"Orientation changed to {o_str}",
+                            "details": {"orientation": o_str}
+                        })
         if len(orientations_seen) > 1:
             transition_str = " -> ".join(orientations_seen)
             evidence_list.append(f"Orientation sequence: {transition_str}.")
@@ -78,12 +96,12 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
 
     # Build reproduction guidance sequence
     repro_sequence: List[str] = [
-        "Start a capture.",
-        "Perform the application action being tested."
+        "Start a capture session on the device.",
+        "Perform the application user action being tested."
     ]
     for step in repro_implications:
         repro_sequence.append(step)
-    repro_sequence.append("Observe the resulting application behavior.")
+    repro_sequence.append("Observe and verify the resulting application behavior.")
 
     # Status, Confidence, Title & Summary
     is_simulated = bool(telemetry.is_simulated)
@@ -93,7 +111,9 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     num_conditions = len(detected_conditions_map)
     if num_conditions > 0:
         status = "ANALYZED"
-        confidence = min(98, 70 + (num_conditions * 12))
+        detection_status = "ANOMALY DETECTED"
+        confidence = min(98, 70 + (num_conditions * 10))
+        score_explanation = f"Evaluated {num_conditions} breached threshold condition(s) across telemetry signals."
         if num_conditions == 1:
             title = f"{title_parts[0].upper()} DETECTED"
             summary = f"Conditions observed during this {capture_type_label}."
@@ -105,7 +125,9 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
             summary = f"Conditions observed during this {capture_type_label}."
     else:
         status = "ANALYZED"
-        confidence = 50
+        detection_status = "NO SIGNIFICANT ANOMALY DETECTED"
+        confidence = 100
+        score_explanation = "Baseline verified — all telemetry signals remained within nominal bounds."
         title = "NO SIGNIFICANT ANOMALY DETECTED"
         summary = f"No critical telemetry anomaly conditions detected during {capture_type_label} session."
         if not observed_conditions_list:
@@ -116,7 +138,7 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         "charging": False,
         "orientation": (telemetry.orientation or "PORTRAIT").upper(),
         "network": telemetry.network or "Unknown",
-        "cpu": f"{telemetry.cpu}%" if telemetry.cpu is not None else "Standard Core Info"
+        "cpu": f"{telemetry.cpu:.1f}%" if isinstance(telemetry.cpu, float) else (f"{telemetry.cpu}%" if telemetry.cpu is not None else "Standard Core Info")
     }
 
     current_timestamp = datetime.now(timezone.utc).isoformat()
@@ -127,6 +149,7 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         log_id=log_id,
         title=title,
         status=status,
+        detection_status=detection_status,
         confidence=confidence,
         summary=summary,
         data_source=data_source,
@@ -136,9 +159,12 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         steps_to_reproduce=repro_sequence,
         device_context=device_context,
         evidence=evidence_list,
+        event_timeline=event_timeline,
         timestamp=current_timestamp,
         orientation_history=orientations_seen,
         orientation_change_count=orientation_change_count,
         snapshot_count=snapshot_count,
-        score_title="CONDITION SCORE"
+        score_title="THRESHOLD CONFIDENCE METRIC",
+        score_explanation=score_explanation
     )
+
