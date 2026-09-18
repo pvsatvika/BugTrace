@@ -1064,74 +1064,78 @@
             const container = document.getElementById('report-view-main');
             const report = reportsData.find(r => (r.id === activeReportId || r.report_id === activeReportId));
             if (!report) {
-                container.innerHTML = `<div style="color:var(--text-muted);">Select a report to view details.</div>`;
+                container.innerHTML = `<div style="color:var(--text-muted); text-align:center; padding:40px;">Select a report from the left sidebar to view details.</div>`;
                 return;
             }
 
             const isDemo = report.data_source.includes('SIMULATED');
             const seq = (report.orientation_history || []).join(' → ').toUpperCase();
+            const statusBg = report.status === 'ANALYZED' ? 'background:#ecfdf5; color:#047857; border:1px solid #a7f3d0;' : 'background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;';
 
             container.innerHTML = `
-                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--card-border); padding-bottom:16px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; border-bottom:1px solid var(--card-border); padding-bottom:20px;">
                     <div>
                         <div style="font-size:11px; font-weight:700; color:var(--text-muted); letter-spacing:1px; text-transform:uppercase;">BUGTRACE REPORT</div>
-                        <div style="font-family:var(--font-mono); font-size:20px; font-weight:800; color:var(--accent-primary); margin-top:2px;">${report.id || report.report_id}</div>
+                        <div style="font-family:var(--font-mono); font-size:22px; font-weight:800; color:var(--text-main); margin-top:2px;">${report.id || report.report_id}</div>
                     </div>
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; font-family:var(--font-mono); font-size:11px; font-weight:700; padding:4px 10px; border-radius:6px;">${report.status}</span>
-                        <span class="badge-source ${isDemo ? 'badge-demo' : 'badge-real'}">${report.data_source}</span>
+                    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+                        <span style="${statusBg} font-family:var(--font-mono); font-size:11px; font-weight:700; padding:6px 12px; border-radius:6px; letter-spacing:0.5px;">${report.status}</span>
+                        <span class="badge-source ${isDemo ? 'badge-demo' : 'badge-real'}" style="padding:6px 12px; font-size:11px;">${report.data_source}</span>
                     </div>
                 </div>
 
                 <div>
-                    <div class="report-section-label">TITLE</div>
+                    <div class="report-section-label">// TITLE</div>
                     <div style="font-family:var(--font-mono); font-size:16px; font-weight:700; color:var(--text-main);">${report.title}</div>
                 </div>
 
                 <div>
-                    <div class="report-section-label">WHAT BUGTRACE DETECTED</div>
-                    <div class="content-block" style="font-size:13px; color:var(--text-secondary);">${report.summary}</div>
+                    <div class="report-section-label">// WHAT BUGTRACE DETECTED</div>
+                    <div class="content-block" style="font-size:13px; color:var(--text-secondary); line-height:1.6;">${report.summary}</div>
                 </div>
 
                 <div>
-                    <div class="report-section-label">OBSERVED DEVICE CONDITIONS</div>
-                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        ${(report.observed_conditions || []).map(c => `<div style="background:#f1f5f9; border:1px solid #cbd5e1; color:var(--text-main); font-family:var(--font-mono); font-size:11px; font-weight:600; padding:6px 12px; border-radius:6px;">[ ${c.toUpperCase()} ]</div>`).join('')}
+                    <div class="report-section-label">// OBSERVED DEVICE CONDITIONS</div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        ${(report.observed_conditions || []).map(c => `<div style="background:#f1f5f9; border:1px solid #cbd5e1; color:var(--text-main); font-family:var(--font-mono); font-size:11px; font-weight:600; padding:7px 14px; border-radius:6px;">[ ${c.toUpperCase()} ]</div>`).join('')}
                     </div>
                 </div>
 
                 ${seq ? `
                 <div>
-                    <div class="report-section-label">ORIENTATION HISTORY</div>
-                    <div class="content-block" style="display:flex; justify-content:space-between; align-items:center;">
-                        <div style="font-family:var(--font-mono); font-size:14px; font-weight:700; color:var(--accent-primary);">${seq}</div>
-                        <div style="font-size:12px; color:var(--text-muted);">${report.orientation_change_count || 0} transitions recorded across ${report.snapshot_count || 1} snapshots</div>
+                    <div class="report-section-label">// ORIENTATION HISTORY</div>
+                    <div class="content-block" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <div style="font-family:var(--font-mono); font-size:15px; font-weight:700; color:var(--accent-primary);">${seq}</div>
+                        <div style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono);">${report.orientation_change_count || 0} transition(s) recorded across ${report.snapshot_count || 1} snapshot(s)</div>
                     </div>
                 </div>
                 ` : ''}
 
                 <div>
-                    <div class="report-section-label">TELEMETRY EVIDENCE</div>
-                    <div class="content-block" style="display:flex; flex-direction:column; gap:8px;">
-                        ${(report.evidence || []).map(ev => `<div style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary);">✓ ${ev}</div>`).join('')}
+                    <div class="report-section-label">// TELEMETRY EVIDENCE</div>
+                    <div class="content-block" style="display:flex; flex-direction:column; gap:10px;">
+                        ${(report.evidence || []).map(ev => `<div style="font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:8px;"><span style="color:var(--status-green); font-weight:bold;">✓</span> <span>${ev}</span></div>`).join('')}
                     </div>
                 </div>
 
                 <div>
-                    <div class="report-section-label">SUGGESTED REPRODUCTION CONDITIONS</div>
-                    <div style="display:flex; flex-direction:column; gap:8px;">
+                    <div class="report-section-label">// SUGGESTED REPRODUCTION CONDITIONS</div>
+                    <div style="display:flex; flex-direction:column; gap:10px;">
                         ${(report.reproduction_steps || report.steps_to_reproduce || []).map((step, idx) => `
-                            <div class="content-block" style="display:flex; align-items:center; gap:12px; padding:10px 14px;">
-                                <div style="background:var(--accent-primary); color:#ffffff; font-family:var(--font-mono); font-size:11px; font-weight:700; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;">${idx + 1}</div>
-                                <div style="font-size:13px; color:var(--text-main);">${step}</div>
+                            <div class="content-block" style="display:flex; align-items:center; gap:14px; padding:12px 16px;">
+                                <div style="background:var(--accent-primary); color:#ffffff; font-family:var(--font-mono); font-size:11px; font-weight:700; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0;">${idx + 1}</div>
+                                <div style="font-size:13px; color:var(--text-main); font-weight:500;">${step}</div>
                             </div>
                         `).join('')}
                     </div>
                 </div>
 
-                <div class="content-block" style="display:flex; justify-content:space-between; align-items:center; background:#eff6ff; border-color:#bfdbfe;">
-                    <span style="font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--accent-primary);">${report.score_title || 'CONDITION SCORE'}</span>
-                    <span style="font-family:var(--font-mono); font-size:24px; font-weight:800; color:var(--accent-primary);">${report.confidence}%</span>
+                <div class="content-block" style="display:flex; justify-content:space-between; align-items:center; background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:16px 20px;">
+                    <div>
+                        <div style="font-family:var(--font-mono); font-size:11px; font-weight:700; color:var(--accent-primary); text-transform:uppercase; letter-spacing:0.5px;">${report.score_title || 'CONDITION SCORE'}</div>
+                        <div style="font-size:12px; color:var(--text-secondary); margin-top:2px;">Observed telemetry threshold confidence metric</div>
+                    </div>
+                    <div style="font-family:var(--font-mono); font-size:28px; font-weight:800; color:var(--accent-primary);">${report.confidence}%</div>
                 </div>
             `;
         }
