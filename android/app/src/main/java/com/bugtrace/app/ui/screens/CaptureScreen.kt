@@ -4,14 +4,13 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Warning
@@ -43,7 +42,7 @@ fun CaptureScreen(
     collector: TelemetryCollector,
     reportRepository: ReportRepository,
     historyRepository: CaptureHistoryRepository,
-    onViewReport: (String) -> Unit,
+    onViewReport: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val telemetryState by collector.telemetryState.collectAsState()
@@ -54,7 +53,7 @@ fun CaptureScreen(
     val configuration = LocalConfiguration.current
     val coroutineScope = rememberCoroutineScope()
 
-    var selectedSessionForDetails by remember { mutableStateOf<CaptureSession?>(null) }
+    var lastSentSessionId by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(configuration.orientation) {
         collector.updateOrientation(configuration.orientation)
@@ -178,7 +177,7 @@ fun CaptureScreen(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Collecting live device telemetry...",
+                                text = "Capturing device evidence...",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontSize = 11.sp,
                                 color = TextSecondary
@@ -198,7 +197,56 @@ fun CaptureScreen(
             }
         }
 
-        // 3. Error message banner
+        // 3. Post-Capture Sent Banner
+        if (lastSentSessionId != null && !telemetryState.isCapturing && errorMessage == null) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DarkSurfaceVariant)
+                        .border(1.dp, StatusGreen.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = "Capture Sent",
+                                tint = StatusGreen,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "✓ CAPTURE SENT TO BACKEND",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = StatusGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "Analysis available on Developer Console",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontSize = 11.sp,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+
+                        TextButton(onClick = { lastSentSessionId = null }) {
+                            Text("DISMISS", color = TextMuted, fontSize = 10.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Error message banner
         if (errorMessage != null) {
             item {
                 Box(
@@ -212,20 +260,20 @@ fun CaptureScreen(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Default.Warning,
-                            contentDescription = "Backend Error",
-                            tint = StatusRed,
+                            contentDescription = "Backend Warning",
+                            tint = StatusAmber,
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "BACKEND DISCONNECTED",
+                                text = "OFFLINE • PENDING QUEUE",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = StatusRed,
+                                color = StatusAmber,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = errorMessage ?: "",
+                                text = errorMessage ?: "Capture saved locally as offline fallback.",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontSize = 11.sp,
                                 color = TextSecondary
@@ -239,7 +287,7 @@ fun CaptureScreen(
             }
         }
 
-        // 4. Real Device Telemetry Section Header
+        // 5. Real Device Telemetry Section Header
         item {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -249,7 +297,7 @@ fun CaptureScreen(
                     .padding(top = 4.dp)
             ) {
                 Text(
-                    text = "// REAL DEVICE TELEMETRY",
+                    text = "// LIVE DEVICE TELEMETRY",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextMuted,
                     fontFamily = FontFamily.Monospace,
@@ -266,12 +314,12 @@ fun CaptureScreen(
             }
         }
 
-        // 5. Telemetry Cards
+        // 6. Telemetry Cards
         items(telemetryItems) { item ->
             TelemetryCard(item = item)
         }
 
-        // 6. Action Button: START CAPTURE / STOP & ANALYZE (Primary Action immediately following telemetry)
+        // 7. Action Button: START CAPTURE / STOP CAPTURE
         item {
             Spacer(modifier = Modifier.height(4.dp))
             Button(
@@ -299,11 +347,13 @@ fun CaptureScreen(
                         )
 
                         historyRepository.addSession(newSession)
+                        lastSentSessionId = sessionId
 
                         coroutineScope.launch {
                             reportRepository.processCapturedTelemetry(sessionId, finalTelemetry)
                         }
                     } else {
+                        lastSentSessionId = null
                         collector.startCapture()
                     }
                 },
@@ -330,7 +380,7 @@ fun CaptureScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = "ANALYZING LOG...",
+                            text = "SENDING TO BACKEND...",
                             style = MaterialTheme.typography.titleMedium,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -349,7 +399,7 @@ fun CaptureScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (telemetryState.isCapturing) "STOP & ANALYZE" else "START CAPTURE",
+                            text = if (telemetryState.isCapturing) "STOP CAPTURE" else "START CAPTURE",
                             style = MaterialTheme.typography.titleMedium,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -358,169 +408,6 @@ fun CaptureScreen(
                     }
                 }
             }
-        }
-
-        // 7. Recent Captures Section Header
-        item {
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(
-                    text = "// RECENT CAPTURES",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
-                    letterSpacing = 1.sp
-                )
-
-                if (recentSessions.isNotEmpty()) {
-                    Text(
-                        text = "${recentSessions.size} SESSIONS",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted,
-                        fontSize = 9.sp
-                    )
-                }
-            }
-        }
-
-        // 8. Recent Capture Session Cards
-        if (recentSessions.isEmpty()) {
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(DarkSurface)
-                        .border(1.dp, DarkCardBorder, RoundedCornerShape(8.dp))
-                        .padding(12.dp)
-                ) {
-                    Text(
-                        text = "No recent sessions. Press START CAPTURE above to begin recording.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontSize = 11.sp,
-                        color = TextMuted
-                    )
-                }
-            }
-        } else {
-            items(recentSessions.take(2)) { session ->
-                CompactSessionCard(
-                    session = session,
-                    onClick = { selectedSessionForDetails = session }
-                )
-            }
-        }
-    }
-
-    // Capture Details Dialog
-    selectedSessionForDetails?.let { session ->
-        CaptureDetailsDialog(
-            session = session,
-            onDismiss = { selectedSessionForDetails = null },
-            onViewReport = { reportId ->
-                selectedSessionForDetails = null
-                onViewReport(reportId)
-            },
-            onDeleteSession = { id ->
-                historyRepository.deleteSession(id)
-                selectedSessionForDetails = null
-            },
-            onRetryAnalysis = { sessionToRetry ->
-                coroutineScope.launch {
-                    val success = reportRepository.retrySessionAnalysis(sessionToRetry)
-                    if (success) {
-                        selectedSessionForDetails = null
-                        val updatedReport = reportRepository.latestReport.value
-                        if (updatedReport != null) {
-                            onViewReport(updatedReport.id)
-                        }
-                    }
-                }
-            }
-        )
-    }
-}
-
-@Composable
-fun CompactSessionCard(
-    session: CaptureSession,
-    onClick: () -> Unit
-) {
-    val statusColor = when (session.analysisStatus) {
-        "ANALYZED" -> StatusGreen
-        "PENDING" -> StatusAmber
-        else -> StatusRed
-    }
-
-    val headlineText = when {
-        session.conditions.isNotEmpty() -> session.conditions.entries.joinToString(" + ") { "${it.key}: ${it.value}" }
-        session.batteryPercent < 20 -> "Low battery condition"
-        session.orientation == "Landscape" -> "Landscape condition"
-        session.networkState == "Offline" -> "Offline condition"
-        else -> "Normal device conditions"
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(DarkSurface)
-            .border(1.dp, DarkCardBorder, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(12.dp)
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = session.reportId ?: session.id,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = AccentCyan,
-                        fontSize = 12.sp
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(statusColor)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    text = headlineText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontSize = 11.sp,
-                    color = TextPrimary
-                )
-
-                Text(
-                    text = "${session.formattedDuration} • ${session.timeAgo}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontSize = 10.sp,
-                    color = TextMuted
-                )
-            }
-
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = "Details",
-                tint = TextMuted,
-                modifier = Modifier.size(16.dp)
-            )
         }
     }
 }

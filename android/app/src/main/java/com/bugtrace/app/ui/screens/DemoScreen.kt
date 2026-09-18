@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material3.*
@@ -31,12 +32,13 @@ import kotlinx.coroutines.launch
 fun DemoScreen(
     reportRepository: ReportRepository,
     historyRepository: CaptureHistoryRepository,
-    onViewReport: (String) -> Unit,
+    onViewReport: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isLoading by reportRepository.isLoading.collectAsState()
     val coroutineScope = rememberCoroutineScope()
     var selectedDemoScenario by remember { mutableStateOf<DemoScenario?>(null) }
+    var lastDemoSentTitle by remember { mutableStateOf<String?>(null) }
 
     Column(
         modifier = modifier
@@ -120,6 +122,54 @@ fun DemoScreen(
 
         Spacer(modifier = Modifier.height(10.dp))
 
+        // Post-Demo Sent Banner
+        if (lastDemoSentTitle != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DarkSurfaceVariant)
+                    .border(1.dp, StatusAmber.copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Demo Sent",
+                            tint = StatusAmber,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "✓ DEMO CAPTURE SENT TO BACKEND",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = StatusAmber,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Scenario '${lastDemoSentTitle}' ready on Developer Console",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                        }
+                    }
+
+                    TextButton(onClick = { lastDemoSentTitle = null }) {
+                        Text("DISMISS", color = TextMuted, fontSize = 10.sp)
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+        }
+
         // Demo Scenarios Scrollable List
         LazyColumn(
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -175,12 +225,14 @@ fun DemoScreen(
                 )
 
                 historyRepository.addSession(newSession)
+                val sTitle = scenario.title
                 selectedDemoScenario = null
 
                 coroutineScope.launch {
                     val success = reportRepository.processCapturedTelemetry(sessionId, simulatedTelemetry)
                     if (success) {
-                        onViewReport(newSession.id)
+                        lastDemoSentTitle = sTitle
+                        onViewReport?.invoke(newSession.id)
                     }
                 }
             }
@@ -226,7 +278,7 @@ fun DemoScenarioCardItem(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "DEMO",
+                            text = "SIMULATED DEMO DATA",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
                             color = StatusAmber,
@@ -309,7 +361,7 @@ fun DemoScenarioPreviewDialog(
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = "SIMULATED DATA",
+                            text = "SIMULATED DEMO DATA",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
@@ -382,7 +434,7 @@ fun DemoScenarioPreviewDialog(
                 }
 
                 Text(
-                    text = "Running this demo scenario submits simulated telemetry to the backend analyzer without modifying live hardware measurements.",
+                    text = "Running this scenario transmits simulated demo telemetry to the backend analyzer. View results on the Developer Console.",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextMuted,
                     fontSize = 10.sp

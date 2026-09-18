@@ -6,8 +6,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
-import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material3.*
@@ -24,12 +22,9 @@ import com.bugtrace.app.repository.CaptureHistoryRepository
 import com.bugtrace.app.repository.ReportRepository
 import com.bugtrace.app.telemetry.TelemetryCollector
 import com.bugtrace.app.ui.theme.*
-import kotlinx.coroutines.launch
 
 enum class NavigationTab(val title: String, val icon: ImageVector) {
     CAPTURE("Capture", Icons.Default.Sensors),
-    TIMELINE("Timeline", Icons.AutoMirrored.Filled.List),
-    REPORTS("Reports", Icons.Default.Assessment),
     DEMO("Demo", Icons.Default.Science)
 }
 
@@ -40,7 +35,6 @@ fun MainScreen(
     historyRepository: CaptureHistoryRepository
 ) {
     var selectedTab by remember { mutableStateOf(NavigationTab.CAPTURE) }
-    val coroutineScope = rememberCoroutineScope()
 
     Scaffold(
         bottomBar = {
@@ -122,40 +116,12 @@ fun MainScreen(
                 NavigationTab.CAPTURE -> CaptureScreen(
                     collector = collector,
                     reportRepository = reportRepository,
-                    historyRepository = historyRepository,
-                    onViewReport = { reportId ->
-                        coroutineScope.launch {
-                            val success = reportRepository.loadReportById(reportId)
-                            if (success) {
-                                selectedTab = NavigationTab.REPORTS
-                            }
-                        }
-                    }
+                    historyRepository = historyRepository
                 )
-                NavigationTab.TIMELINE -> CaptureTimelineScreen(
-                    historyRepository = historyRepository,
-                    reportRepository = reportRepository,
-                    onViewReport = { reportId ->
-                        coroutineScope.launch {
-                            val success = reportRepository.loadReportById(reportId)
-                            if (success) {
-                                selectedTab = NavigationTab.REPORTS
-                            }
-                        }
-                    }
-                )
-                NavigationTab.REPORTS -> ReportsScreen(reportRepository = reportRepository)
                 NavigationTab.DEMO -> DemoScreen(
                     reportRepository = reportRepository,
                     historyRepository = historyRepository,
-                    onViewReport = { reportId ->
-                        coroutineScope.launch {
-                            val success = reportRepository.loadReportById(reportId)
-                            if (success) {
-                                selectedTab = NavigationTab.REPORTS
-                            }
-                        }
-                    }
+                    onViewReport = { }
                 )
             }
         }
