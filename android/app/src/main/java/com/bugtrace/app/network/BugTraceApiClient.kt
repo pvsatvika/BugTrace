@@ -90,6 +90,9 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
                     evtObj.put("timestamp", evtIso)
                     evtObj.put("event_type", evt.eventType)
                     evtObj.put("description", evt.description)
+                    val detailsObj = JSONObject()
+                    evt.details.forEach { (k, v) -> detailsObj.put(k, v) }
+                    evtObj.put("details", detailsObj)
                     eventsArray.put(evtObj)
                 }
                 put("events", eventsArray)

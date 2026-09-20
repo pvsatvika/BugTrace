@@ -34,6 +34,8 @@ class TelemetryCollector private constructor(private val context: Context) {
     private var captureJob: Job? = null
     private val currentSessionHistory = mutableListOf<com.bugtrace.app.model.TelemetrySnapshot>()
     private val currentSessionEvents = mutableListOf<com.bugtrace.app.model.TelemetryEvent>()
+    private val targetAppMonitor = TargetAppMonitor(context.applicationContext)
+    var currentTargetPackage: String = TargetAppMonitor.defaultTargetPackage
 
     init {
         // Initial single read
@@ -81,8 +83,18 @@ class TelemetryCollector private constructor(private val context: Context) {
         )
     }
 
-    fun startCapture() {
+    fun recordAppCrashEvent(event: com.bugtrace.app.model.TelemetryEvent) {
+        synchronized(currentSessionHistory) {
+            currentSessionEvents.add(event)
+        }
+        _telemetryState.value = _telemetryState.value.copy(
+            events = _telemetryState.value.events + event
+        )
+    }
+
+    fun startCapture(targetPackage: String = currentTargetPackage) {
         if (captureJob?.isActive == true) return
+        currentTargetPackage = targetPackage
 
         synchronized(currentSessionHistory) {
             currentSessionHistory.clear()
@@ -91,7 +103,7 @@ class TelemetryCollector private constructor(private val context: Context) {
             currentSessionHistory.add(initialSnap)
             val startEvent = com.bugtrace.app.model.TelemetryEvent(
                 eventType = "CAPTURE_START",
-                description = "User started real telemetry capture"
+                description = "User started real telemetry capture for $targetPackage"
             )
             currentSessionEvents.add(startEvent)
 
@@ -102,6 +114,16 @@ class TelemetryCollector private constructor(private val context: Context) {
                 events = listOf(startEvent)
             )
         }
+
+        // Start real-time target process crash monitoring
+        targetAppMonitor.startMonitoring(
+            targetPackage = currentTargetPackage,
+            getLastOrientation = { _telemetryState.value.orientation },
+            onCrashDetected = { crashEvent ->
+                recordAppCrashEvent(crashEvent)
+            },
+            scope = scope
+        )
 
         captureJob = scope.launch {
             while (isActive) {
@@ -122,6 +144,7 @@ class TelemetryCollector private constructor(private val context: Context) {
     }
 
     fun stopCapture(): List<com.bugtrace.app.model.TelemetrySnapshot> {
+        targetAppMonitor.stopMonitoring()
         captureJob?.cancel()
         captureJob = null
         val stopEvent = com.bugtrace.app.model.TelemetryEvent(

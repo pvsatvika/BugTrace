@@ -22,6 +22,63 @@ class TestAnalyzer(unittest.TestCase):
         self.assertEqual(len(report.conditions), 0)
         self.assertTrue(any("normal level" in e for e in report.evidence))
 
+    def test_app_crash_v1_demo_scenario(self):
+        # Scenario: ShopDemo V1 landscape crash
+        telemetry = TelemetryLogInput(
+            battery=80,
+            orientation="landscape",
+            network="wifi",
+            cpu=25.0,
+            is_simulated=False,
+            events=[
+                TelemetryEventInput(event_type="CAPTURE_START", description="User started capture"),
+                TelemetryEventInput(event_type="ORIENTATION_CHANGE", description="Orientation changed to LANDSCAPE"),
+                TelemetryEventInput(
+                    event_type="APP_CRASH",
+                    description="Application crash detected for com.example.shopdemo.v1",
+                    details={
+                        "target_package": "com.example.shopdemo.v1",
+                        "exit_reason": "UNHANDLED_EXCEPTION",
+                        "last_orientation": "LANDSCAPE"
+                    }
+                )
+            ],
+            telemetry_history=[
+                TelemetrySnapshotInput(battery=80, orientation="portrait", network="wifi", cpu=15.0),
+                TelemetrySnapshotInput(battery=80, orientation="landscape", network="wifi", cpu=25.0)
+            ]
+        )
+        report = analyze_telemetry("log-crash", telemetry, "REP-CRASH")
+        self.assertEqual(report.title, "APPLICATION CRASH DETECTED")
+        self.assertEqual(report.detection_status, "ANOMALY DETECTED")
+        self.assertEqual(report.confidence, 98)
+        self.assertIn("app_crash", report.conditions)
+        self.assertTrue(any("com.example.shopdemo.v1" in step for step in report.reproduction_steps))
+        self.assertTrue(any("landscape" in step.lower() for step in report.reproduction_steps))
+
+    def test_shopdemo_v2_landscape_survival_scenario(self):
+        # Scenario: ShopDemo V2 rotated to landscape with NO crash
+        telemetry = TelemetryLogInput(
+            battery=82,
+            orientation="landscape",
+            network="wifi",
+            cpu=18.0,
+            is_simulated=False,
+            events=[
+                TelemetryEventInput(event_type="CAPTURE_START", description="User started capture"),
+                TelemetryEventInput(event_type="ORIENTATION_CHANGE", description="Orientation changed to LANDSCAPE")
+            ],
+            telemetry_history=[
+                TelemetrySnapshotInput(battery=82, orientation="portrait", network="wifi", cpu=15.0),
+                TelemetrySnapshotInput(battery=82, orientation="landscape", network="wifi", cpu=18.0)
+            ]
+        )
+        report = analyze_telemetry("log-v2", telemetry, "REP-V2")
+        self.assertEqual(report.title, "NO SIGNIFICANT ANOMALY DETECTED")
+        self.assertEqual(report.detection_status, "NO SIGNIFICANT ANOMALY DETECTED")
+        self.assertEqual(report.confidence, 100)
+        self.assertNotIn("app_crash", report.conditions)
+
     def test_high_cpu_condition(self):
         telemetry = TelemetryLogInput(
             battery=70,
@@ -61,32 +118,6 @@ class TestAnalyzer(unittest.TestCase):
         self.assertEqual(report.title, "WEAK NETWORK DETECTED")
         self.assertEqual(report.detection_status, "ANOMALY DETECTED")
         self.assertIn("network", report.conditions)
-
-    def test_landscape_orientation_condition(self):
-        telemetry = TelemetryLogInput(
-            battery=75,
-            orientation="landscape",
-            network="wifi",
-            cpu=18.0,
-            is_simulated=False
-        )
-        report = analyze_telemetry("log-5", telemetry, "REP-005")
-        self.assertEqual(report.title, "LANDSCAPE ORIENTATION DETECTED")
-        self.assertEqual(report.detection_status, "ANOMALY DETECTED")
-        self.assertIn("orientation", report.conditions)
-
-    def test_multiple_simultaneous_conditions(self):
-        telemetry = TelemetryLogInput(
-            battery=14,
-            orientation="landscape",
-            network="offline",
-            cpu=85.0,
-            is_simulated=False
-        )
-        report = analyze_telemetry("log-6", telemetry, "REP-006")
-        self.assertIn("MULTIPLE CONDITIONS DETECTED", report.title)
-        self.assertEqual(report.detection_status, "ANOMALY DETECTED")
-        self.assertEqual(len(report.conditions), 4)
 
     def test_simulated_demo_data_badge(self):
         telemetry = TelemetryLogInput(

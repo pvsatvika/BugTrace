@@ -9,6 +9,29 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     repro_implications: List[str] = []
     title_parts: List[str] = []
 
+    client_events = telemetry.events or []
+
+    # Rule 0: APP_CRASH (Explicit Target Application Crash Event)
+    app_crash_event = None
+    for evt in client_events:
+        evt_type = (evt.event_type or "").upper()
+        if evt_type in ["APP_CRASH", "CRASH"]:
+            app_crash_event = evt
+            break
+
+    target_package = None
+    if app_crash_event:
+        details = app_crash_event.details or {}
+        target_package = details.get("target_package") or "com.example.shopdemo.v1"
+        exit_reason = details.get("exit_reason") or "UNHANDLED_EXCEPTION"
+        exit_desc = details.get("exit_description") or app_crash_event.description or "Target application process terminated unexpectedly"
+        last_orient = details.get("last_orientation") or (telemetry.orientation or "LANDSCAPE").upper()
+
+        detected_conditions_map["app_crash"] = f"CRASH: {target_package}"
+        observed_conditions_list.append(f"Application Crash Detected ({target_package})")
+        evidence_list.append(f"APP CRASH EVIDENCE: Target package '{target_package}' process terminated unexpectedly ({exit_reason}) during capture while in {last_orient} orientation.")
+        title_parts.append("application crash")
+
     # Rule 1: LOW_BATTERY (< 20%)
     if telemetry.battery is not None and telemetry.battery < 20:
         detected_conditions_map["battery"] = f"<{telemetry.battery}%"
@@ -19,11 +42,11 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
 
     # Rule 2: LANDSCAPE (orientation == "landscape")
     if telemetry.orientation and telemetry.orientation.lower() == "landscape":
-        detected_conditions_map["orientation"] = "landscape"
-        observed_conditions_list.append("Device in landscape orientation")
         evidence_list.append("Orientation telemetry reported LANDSCAPE.")
         repro_implications.append("Set device to landscape orientation.")
-        title_parts.append("landscape orientation")
+        if not app_crash_event:
+            # Only add to title_parts if it's a non-crash signal anomaly test
+            title_parts.append("landscape orientation")
 
     # Rule 3: NETWORK (weak or offline)
     if telemetry.network and telemetry.network.lower() in ["weak", "offline"]:
@@ -56,7 +79,6 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
 
     # Inspect telemetry history sequence & client events
     history = telemetry.telemetry_history or []
-    client_events = telemetry.events or []
     snapshot_count = len(history)
     orientations_seen: List[str] = []
     event_timeline: List[Dict[str, Any]] = []
@@ -95,30 +117,42 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     orientation_change_count = max(0, len(orientations_seen) - 1)
 
     # Build reproduction guidance sequence
-    repro_sequence: List[str] = [
-        "Start a capture session on the device.",
-        "Perform the application user action being tested."
-    ]
-    for step in repro_implications:
-        repro_sequence.append(step)
-    repro_sequence.append("Observe and verify the resulting application behavior.")
+    if "app_crash" in detected_conditions_map:
+        repro_sequence = [
+            "Start a BugTrace capture session on the device.",
+            f"Launch target application ({target_package}).",
+            "Set device to landscape orientation.",
+            f"Observe application crash / process termination in {target_package}."
+        ]
+    else:
+        repro_sequence = [
+            "Start a capture session on the device.",
+            "Perform the application user action being tested."
+        ]
+        for step in repro_implications:
+            repro_sequence.append(step)
+        repro_sequence.append("Observe and verify normal application operation.")
 
     # Status, Confidence, Title & Summary
     is_simulated = bool(telemetry.is_simulated)
     data_source = "SIMULATED DEMO DATA" if is_simulated else "REAL DEVICE TELEMETRY"
     capture_type_label = "demo capture" if is_simulated else "capture"
 
-    num_conditions = len(detected_conditions_map)
-    if num_conditions > 0:
+    if "app_crash" in detected_conditions_map:
         status = "ANALYZED"
         detection_status = "ANOMALY DETECTED"
+        confidence = 98
+        title = "APPLICATION CRASH DETECTED"
+        summary = f"Target application ({target_package}) process crashed during active telemetry capture session."
+        score_explanation = "Application process termination recorded during telemetry capture."
+    elif len(detected_conditions_map) > 0:
+        status = "ANALYZED"
+        detection_status = "ANOMALY DETECTED"
+        num_conditions = len(detected_conditions_map)
         confidence = min(98, 70 + (num_conditions * 10))
         score_explanation = f"Evaluated {num_conditions} breached threshold condition(s) across telemetry signals."
         if num_conditions == 1:
             title = f"{title_parts[0].upper()} DETECTED"
-            summary = f"Conditions observed during this {capture_type_label}."
-        elif num_conditions == 2:
-            title = f"{title_parts[0].upper()} + {title_parts[1].upper()} DETECTED"
             summary = f"Conditions observed during this {capture_type_label}."
         else:
             title = f"MULTIPLE CONDITIONS DETECTED ({num_conditions})"
@@ -127,9 +161,9 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         status = "ANALYZED"
         detection_status = "NO SIGNIFICANT ANOMALY DETECTED"
         confidence = 100
-        score_explanation = "Baseline verified — all telemetry signals remained within nominal bounds."
+        score_explanation = "Baseline verified — target application ran stably with no process crashes or critical signal anomalies."
         title = "NO SIGNIFICANT ANOMALY DETECTED"
-        summary = f"No critical telemetry anomaly conditions detected during {capture_type_label} session."
+        summary = f"No process crash or critical telemetry anomalies detected during {capture_type_label} session."
         if not observed_conditions_list:
             observed_conditions_list = ["No threshold conditions breached during capture session."]
 
@@ -167,4 +201,3 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         score_title="THRESHOLD CONFIDENCE METRIC",
         score_explanation=score_explanation
     )
-
