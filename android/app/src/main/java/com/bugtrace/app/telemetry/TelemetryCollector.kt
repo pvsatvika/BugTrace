@@ -35,7 +35,7 @@ class TelemetryCollector private constructor(private val context: Context) {
     private val currentSessionHistory = mutableListOf<com.bugtrace.app.model.TelemetrySnapshot>()
     private val currentSessionEvents = mutableListOf<com.bugtrace.app.model.TelemetryEvent>()
     private val targetAppMonitor = TargetAppMonitor(context.applicationContext)
-    var currentTargetPackage: String = TargetAppMonitor.defaultTargetPackage
+    var currentTargetPackage: String = TargetAppMonitor.TARGET_V1
 
     init {
         // Initial single read
@@ -93,7 +93,9 @@ class TelemetryCollector private constructor(private val context: Context) {
     }
 
     fun startCapture(targetPackage: String = currentTargetPackage) {
-        if (captureJob?.isActive == true) return
+        if (captureJob?.isActive == true) {
+            stopCapture()
+        }
         currentTargetPackage = targetPackage
 
         synchronized(currentSessionHistory) {

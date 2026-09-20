@@ -197,6 +197,46 @@ fun CaptureScreen(
             }
         }
 
+        // 2b. Target App Crash Alert Banner
+        val hasCrashEvent = telemetryState.events.any { it.eventType == "APP_CRASH" }
+        if (hasCrashEvent) {
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(StatusRed.copy(alpha = 0.2f))
+                        .border(1.dp, StatusRed, RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = "Crash Detected",
+                            tint = StatusRed,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "CRITICAL • TARGET APP CRASH DETECTED",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                color = StatusRed,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "Target application process crash recorded in event timeline.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontSize = 11.sp,
+                                color = TextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         // 3. Post-Capture Sent Banner
         if (lastSentSessionId != null && !telemetryState.isCapturing && errorMessage == null) {
             item {
@@ -325,9 +365,8 @@ fun CaptureScreen(
             Button(
                 onClick = {
                     if (telemetryState.isCapturing) {
-                        val currentTelemetry = telemetryState.copy()
                         val capturedHistory = collector.stopCapture()
-                        val finalTelemetry = currentTelemetry.copy(telemetryHistory = capturedHistory)
+                        val finalTelemetry = collector.telemetryState.value.copy(telemetryHistory = capturedHistory)
                         val nowMs = System.currentTimeMillis()
                         val startMs = nowMs - (finalTelemetry.elapsedSeconds * 1000L)
                         val sessionId = historyRepository.generateSessionId()

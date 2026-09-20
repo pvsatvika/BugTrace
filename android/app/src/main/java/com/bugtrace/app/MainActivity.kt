@@ -15,6 +15,9 @@ import com.bugtrace.app.ui.screens.MainScreen
 import com.bugtrace.app.ui.theme.BugTraceTheme
 import com.bugtrace.app.ui.theme.DarkBackground
 
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
+
 class MainActivity : ComponentActivity() {
 
     private lateinit var telemetryCollector: TelemetryCollector
@@ -32,6 +35,8 @@ class MainActivity : ComponentActivity() {
         reportStore = BugReportStore(applicationContext)
         reportRepository = ReportRepository(historyRepository = historyRepository, reportStore = reportStore)
 
+        handleIntent(intent)
+
         setContent {
             BugTraceTheme {
                 Surface(
@@ -43,6 +48,47 @@ class MainActivity : ComponentActivity() {
                         reportRepository = reportRepository,
                         historyRepository = historyRepository
                     )
+                }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: android.content.Intent?) {
+        val action = intent?.action ?: return
+        when (action) {
+            "com.bugtrace.app.START_CAPTURE" -> {
+                val targetPkg = intent.getStringExtra("target_package") ?: "com.example.shopdemo.v1"
+                telemetryCollector.startCapture(targetPkg)
+            }
+            "com.bugtrace.app.STOP_CAPTURE" -> {
+                val capturedHistory = telemetryCollector.stopCapture()
+                val finalTelemetry = telemetryCollector.telemetryState.value.copy(telemetryHistory = capturedHistory)
+                val nowMs = System.currentTimeMillis()
+                val startMs = nowMs - (finalTelemetry.elapsedSeconds * 1000L)
+                val sessionId = historyRepository.generateSessionId()
+
+                val newSession = com.bugtrace.app.model.CaptureSession(
+                    id = sessionId,
+                    startTimeMs = startMs,
+                    endTimeMs = nowMs,
+                    durationSeconds = finalTelemetry.elapsedSeconds,
+                    batteryPercent = finalTelemetry.batteryPercent,
+                    isCharging = finalTelemetry.isCharging,
+                    orientation = finalTelemetry.orientation,
+                    networkState = finalTelemetry.networkState,
+                    cpuSummary = finalTelemetry.cpuSummary,
+                    analysisStatus = "PENDING",
+                    telemetryHistory = capturedHistory
+                )
+
+                historyRepository.addSession(newSession)
+                kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                    reportRepository.processCapturedTelemetry(sessionId, finalTelemetry)
                 }
             }
         }

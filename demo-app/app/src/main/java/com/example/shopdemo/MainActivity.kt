@@ -49,6 +49,23 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                val intent = android.content.Intent("com.bugtrace.app.ACTION_APP_CRASH").apply {
+                    setPackage("com.bugtrace.app")
+                    putExtra("target_package", packageName)
+                    putExtra("exit_reason", "UNHANDLED_EXCEPTION")
+                    putExtra("exit_description", throwable.message ?: throwable.toString())
+                    putExtra("exception_class", throwable.javaClass.name)
+                }
+                sendBroadcast(intent)
+            } catch (e: Exception) {
+                // Ignore failure sending crash report broadcast
+            }
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
+
         setContent {
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
