@@ -17,6 +17,7 @@ class TelemetrySnapshotInput(BaseModel):
 
 class TelemetryLogInput(BaseModel):
     battery: Optional[int] = Field(None, description="Battery level percentage (0-100)")
+    is_charging: Optional[bool] = Field(None, description="Power charging status (true if charging)")
     orientation: Optional[str] = Field(None, description="Device orientation (e.g. portrait, landscape)")
     network: Optional[str] = Field(None, description="Network connection state (e.g. wifi, cellular, weak, offline)")
     cpu: Optional[float] = Field(None, description="CPU usage percentage (0-100)")

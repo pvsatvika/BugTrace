@@ -76,13 +76,24 @@ class TelemetryCollector private constructor(private val context: Context) {
         }
     }
 
+    private var lastRecordedOrientation: String = ""
+    private var lastOrientationEventTimestampMs: Long = 0L
+
     private fun handleOrientationChanged(newOrientation: String) {
-        val event = TelemetryEvent(
-            timestampMs = System.currentTimeMillis(),
-            eventType = "ORIENTATION_CHANGE",
-            description = "Device orientation changed to ${newOrientation.uppercase()}"
-        )
+        val nowMs = System.currentTimeMillis()
         synchronized(currentSessionHistory) {
+            if (newOrientation == lastRecordedOrientation || (nowMs - lastOrientationEventTimestampMs) < 1500L) {
+                _telemetryState.value = _telemetryState.value.copy(orientation = newOrientation)
+                return
+            }
+            lastRecordedOrientation = newOrientation
+            lastOrientationEventTimestampMs = nowMs
+
+            val event = TelemetryEvent(
+                timestampMs = nowMs,
+                eventType = "ORIENTATION_CHANGE",
+                description = "Device orientation changed to ${newOrientation.uppercase()}"
+            )
             if (_telemetryState.value.isCapturing) {
                 currentSessionEvents.add(event)
                 currentSessionHistory.add(createSnapshot())
@@ -90,7 +101,7 @@ class TelemetryCollector private constructor(private val context: Context) {
         }
         _telemetryState.value = _telemetryState.value.copy(
             orientation = newOrientation,
-            events = if (_telemetryState.value.isCapturing) _telemetryState.value.events + event else _telemetryState.value.events
+            events = if (_telemetryState.value.isCapturing) currentSessionEvents.toList() else _telemetryState.value.events
         )
     }
 

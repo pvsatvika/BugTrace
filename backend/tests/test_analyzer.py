@@ -183,7 +183,8 @@ class TestAnalyzer(unittest.TestCase):
             network="wifi",
             cpu=22.0,
             events=[
-                TelemetryEventInput(event_type="CAPTURE_START", description="User tapped start capture")
+                TelemetryEventInput(event_type="CAPTURE_START", description="User tapped start capture"),
+                TelemetryEventInput(event_type="ORIENTATION_CHANGE", description="Orientation changed to LANDSCAPE", details={"orientation": "LANDSCAPE"})
             ],
             telemetry_history=[
                 TelemetrySnapshotInput(orientation="portrait"),

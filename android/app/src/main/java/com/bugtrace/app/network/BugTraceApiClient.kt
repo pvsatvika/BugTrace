@@ -60,6 +60,7 @@ class BugTraceApiClient(private val baseUrl: String = ApiConfig.BASE_URL) {
 
             val jsonPayload = JSONObject().apply {
                 put("battery", telemetry.batteryPercent)
+                put("is_charging", telemetry.isCharging)
                 put("orientation", telemetry.orientation.lowercase())
                 put("network", telemetry.networkState.lowercase())
                 put("cpu", cpuVal)

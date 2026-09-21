@@ -9,12 +9,12 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     repro_implications: List[str] = []
     title_parts: List[str] = []
 
-    # Deduplicate client events (ensure single APP_CRASH per target package)
+    # 1. Deduplicate raw client events (ensure single APP_CRASH per target package)
     raw_events = telemetry.events or []
     client_events: List[Any] = []
     seen_crash_packages = set()
-
     app_crash_event = None
+
     for evt in raw_events:
         evt_type = (evt.event_type or "").upper()
         if evt_type in ["APP_CRASH", "CRASH"]:
@@ -28,12 +28,15 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
 
     history = telemetry.telemetry_history or []
 
-    # Multi-condition telemetry evaluation
-    is_charging_observed = any(
-        snap.is_charging for snap in history if snap.is_charging is not None
-    )
-    if app_crash_event and app_crash_event.details and app_crash_event.details.get("is_charging") is not None:
-        is_charging_observed = bool(app_crash_event.details.get("is_charging"))
+    # 2. Multi-condition telemetry evaluation (Charging, Network, Orientation)
+    is_charging_observed = False
+    if telemetry.is_charging is not None:
+        is_charging_observed = bool(telemetry.is_charging)
+    elif any(snap.is_charging for snap in history if snap.is_charging is not None):
+        is_charging_observed = True
+    elif app_crash_event and app_crash_event.details and app_crash_event.details.get("is_charging") is not None:
+        val = app_crash_event.details.get("is_charging")
+        is_charging_observed = (val is True or str(val).lower() == "true")
 
     net_state_upper = (telemetry.network or "").upper()
     if not net_state_upper and history:
@@ -44,7 +47,8 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
     if not net_state_upper:
         net_state_upper = "WI-FI"
 
-    last_orient = "LANDSCAPE"
+    # Authoritative crash-time orientation
+    last_orient = "PORTRAIT"
     if app_crash_event and app_crash_event.details and app_crash_event.details.get("last_orientation"):
         last_orient = str(app_crash_event.details.get("last_orientation")).upper()
     elif history and history[-1].orientation:
@@ -57,7 +61,6 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         details = app_crash_event.details or {}
         target_package = details.get("target_package") or "com.example.shopdemo.v1"
         exit_reason = details.get("exit_reason") or "UNHANDLED_EXCEPTION"
-        exit_desc = details.get("exit_description") or app_crash_event.description or "Target application process terminated unexpectedly"
 
         detected_conditions_map["app_crash"] = f"CRASH: {target_package}"
         observed_conditions_list.append(f"Application Crash Detected ({target_package})")
@@ -82,12 +85,13 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         repro_implications.append("Maintain device battery level below 20%.")
         title_parts.append("low battery")
 
-    # Rule 2: LANDSCAPE
-    if last_orient == "LANDSCAPE" or (telemetry.orientation and telemetry.orientation.lower() == "landscape"):
-        evidence_list.append("Orientation telemetry reported LANDSCAPE.")
-        repro_implications.append("Set device to landscape orientation.")
-        if not app_crash_event:
-            title_parts.append("landscape orientation")
+    # Rule 2: LANDSCAPE (non-crash condition tracking)
+    if not app_crash_event and last_orient == "LANDSCAPE":
+        if is_charging_observed:
+            observed_conditions_list.append("Device Charging State: CHARGING (USB/AC Active)")
+        if "WIFI" in net_state_upper or "WI-FI" in net_state_upper:
+            observed_conditions_list.append("Network State: WI-FI Connected")
+        observed_conditions_list.append("Device Orientation: LANDSCAPE")
 
     # Rule 3: NETWORK (weak or offline)
     if telemetry.network and telemetry.network.lower() in ["weak", "offline"]:
@@ -107,47 +111,47 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         repro_implications.append("Maintain CPU activity above 80% threshold.")
         title_parts.append("high CPU load")
 
-    # Capture non-anomalous telemetry evidence
+    # Capture non-anomalous telemetry evidence cleanly (avoiding orientation contradiction)
     if telemetry.battery is not None and telemetry.battery >= 20:
         evidence_list.append(f"Battery telemetry reported {telemetry.battery}%.")
-    if last_orient != "LANDSCAPE":
-        evidence_list.append(f"Orientation telemetry reported {last_orient}.")
+    evidence_list.append(f"Orientation telemetry at crash/capture: {last_orient}.")
     if telemetry.network and telemetry.network.lower() not in ["weak", "offline"]:
-        evidence_list.append(f"Network telemetry observed {telemetry.network}.")
+        evidence_list.append(f"Network telemetry observed {net_state_upper}.")
     if telemetry.cpu is not None and telemetry.cpu <= 80:
         cpu_val_str = f"{telemetry.cpu:.1f}%" if isinstance(telemetry.cpu, float) else f"{telemetry.cpu}%"
         evidence_list.append(f"CPU load observed at normal level ({cpu_val_str}).")
     if is_charging_observed:
         evidence_list.append("Device power state: CHARGING (USB/AC active).")
 
-    # Inspect telemetry history sequence & client events
+    # Clean orientation history & timeline sequence (deduplicate rapid flip-flops)
     snapshot_count = len(history)
     orientations_seen: List[str] = []
     event_timeline: List[Dict[str, Any]] = []
 
-    # Map client events into timeline
+    # Filter client events into timeline without rapid duplicate orientation events
+    last_timeline_orient = ""
     for evt in client_events:
+        evt_type = (evt.event_type or "EVENT").upper()
+        if evt_type == "ORIENTATION_CHANGE":
+            o_val = (evt.details or {}).get("orientation", "").upper()
+            if o_val == last_timeline_orient:
+                continue
+            last_timeline_orient = o_val
+
         event_timeline.append({
             "timestamp": evt.timestamp or datetime.now(timezone.utc).isoformat(),
-            "event_type": evt.event_type or "EVENT",
+            "event_type": evt_type,
             "description": evt.description or "Device event logged",
             "details": evt.details or {}
         })
 
     if history:
-        evidence_list.append(f"{snapshot_count} telemetry snapshots recorded during capture window.")
-        for idx, snap in enumerate(history):
+        evidence_list.append(f"{snapshot_count} telemetry snapshot(s) recorded during capture window.")
+        for snap in history:
             if snap.orientation:
                 o_str = snap.orientation.upper()
                 if not orientations_seen or orientations_seen[-1] != o_str:
                     orientations_seen.append(o_str)
-                    if idx > 0:
-                        event_timeline.append({
-                            "timestamp": snap.timestamp or datetime.now(timezone.utc).isoformat(),
-                            "event_type": "ORIENTATION_CHANGE",
-                            "description": f"Orientation changed to {o_str}",
-                            "details": {"orientation": o_str}
-                        })
         if len(orientations_seen) > 1:
             transition_str = " -> ".join(orientations_seen)
             evidence_list.append(f"Orientation sequence: {transition_str}.")
@@ -157,9 +161,9 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
 
     orientation_change_count = max(0, len(orientations_seen) - 1)
 
-    # Build reproduction guidance sequence from ACTUAL observed telemetry conditions
+    # Build reproduction & verification guidance sequence from ACTUAL observed telemetry
+    charging_str = "CHARGING" if is_charging_observed else "DISCHARGING"
     if "app_crash" in detected_conditions_map:
-        charging_str = "CHARGING" if is_charging_observed else "DISCHARGING"
         repro_sequence = [
             "Start a BugTrace capture session on the device.",
             f"Connect device to USB/AC power charger (Power state: {charging_str}).",
@@ -170,12 +174,13 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         ]
     else:
         repro_sequence = [
-            "Start a capture session on the device.",
-            "Perform the application user action being tested."
+            "Start a BugTrace capture session on the device.",
+            f"Connect device to USB/AC power charger (Power state: {charging_str}).",
+            f"Ensure device network connection is set to {net_state_upper}.",
+            f"Rotate device to {last_orient} orientation.",
+            "Launch target application and perform test actions.",
+            "Observe and verify normal application operation under reproduced conditions."
         ]
-        for step in repro_implications:
-            repro_sequence.append(step)
-        repro_sequence.append("Observe and verify normal application operation.")
 
     # Status, Confidence, Title & Summary
     is_simulated = bool(telemetry.is_simulated)
@@ -187,7 +192,7 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         detection_status = "ANOMALY DETECTED"
         confidence = 98
         title = "APPLICATION CRASH DETECTED"
-        summary = f"Target application ({target_package}) process crashed during multi-condition capture ({net_state_upper} + Power:{'CHARGING' if is_charging_observed else 'DISCHARGING'} + {last_orient})."
+        summary = f"Target application ({target_package}) process crashed during multi-condition capture ({net_state_upper} + Power:{charging_str} + {last_orient})."
         score_explanation = "Application process termination recorded during telemetry capture under active condition set."
     elif len(detected_conditions_map) > 0:
         status = "ANALYZED"
@@ -207,9 +212,14 @@ def analyze_telemetry(log_id: str, telemetry: TelemetryLogInput, report_id: str)
         confidence = 100
         score_explanation = "Baseline verified — target application ran stably with no process crashes or critical signal anomalies."
         title = "NO SIGNIFICANT ANOMALY DETECTED"
-        summary = f"No process crash or critical telemetry anomalies detected during {capture_type_label} session."
+        summary = f"Target application remained running stably under verified reproduction conditions ({net_state_upper} + Power:{charging_str} + {last_orient})."
         if not observed_conditions_list:
-            observed_conditions_list = ["No threshold conditions breached during capture session."]
+            observed_conditions_list = [
+                f"Charging State: {charging_str} (USB/AC Active)" if is_charging_observed else "Charging State: DISCHARGING",
+                f"Network State: {net_state_upper} Connected",
+                f"Device Orientation: {last_orient}",
+                "Baseline Verified: No application crash occurred under the reproduced conditions."
+            ]
 
     device_context = {
         "battery": f"{telemetry.battery}%" if telemetry.battery is not None else "N/A",
