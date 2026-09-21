@@ -39,7 +39,9 @@ class TestAnalyzer(unittest.TestCase):
                     details={
                         "target_package": "com.example.shopdemo.v1",
                         "exit_reason": "UNHANDLED_EXCEPTION",
-                        "last_orientation": "LANDSCAPE"
+                        "last_orientation": "LANDSCAPE",
+                        "is_charging": True,
+                        "network": "Wi-Fi"
                     }
                 )
             ],
@@ -54,10 +56,38 @@ class TestAnalyzer(unittest.TestCase):
         self.assertEqual(report.confidence, 98)
         self.assertIn("app_crash", report.conditions)
         self.assertEqual(report.device_context.get("charging"), "CHARGING (USB/AC)")
+        self.assertEqual(report.device_context.get("orientation"), "LANDSCAPE")
         self.assertTrue(any("com.example.shopdemo.v1" in step for step in report.reproduction_steps))
         self.assertTrue(any("CHARGING" in cond for cond in report.observed_conditions))
         self.assertTrue(any("WI-FI" in cond for cond in report.observed_conditions))
         self.assertTrue(any("LANDSCAPE" in cond for cond in report.observed_conditions))
+
+    def test_duplicate_app_crash_deduplication(self):
+        # Verify duplicate APP_CRASH events for same target package are deduplicated
+        telemetry = TelemetryLogInput(
+            battery=75,
+            orientation="landscape",
+            network="wifi",
+            cpu=20.0,
+            events=[
+                TelemetryEventInput(
+                    event_type="APP_CRASH",
+                    description="Broadcast crash",
+                    details={"target_package": "com.example.shopdemo.v1", "exit_reason": "UNHANDLED_EXCEPTION", "last_orientation": "LANDSCAPE"}
+                ),
+                TelemetryEventInput(
+                    event_type="APP_CRASH",
+                    description="ExitInfo crash fallback",
+                    details={"target_package": "com.example.shopdemo.v1", "exit_reason": "UNHANDLED_EXCEPTION", "last_orientation": "LANDSCAPE"}
+                )
+            ],
+            telemetry_history=[
+                TelemetrySnapshotInput(battery=75, is_charging=True, orientation="landscape", network="wifi", cpu=20.0)
+            ]
+        )
+        report = analyze_telemetry("log-dedup", telemetry, "REP-DEDUP")
+        crash_events = [e for e in report.event_timeline if e.get("event_type") == "APP_CRASH"]
+        self.assertEqual(len(crash_events), 1)
 
     def test_shopdemo_v2_landscape_survival_scenario(self):
         # Scenario: ShopDemo V2 rotated to landscape with NO crash under multi-conditions

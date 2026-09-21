@@ -25,6 +25,22 @@ class TargetAppMonitor(private val context: Context) {
     private var lastRecordedExitTimestampMs: Long = 0L
     private var crashReceiver: BroadcastReceiver? = null
 
+    // Deduplication state to prevent double-logging single crash from Broadcast + ExitInfo/Polling
+    private var lastReportedCrashTimeMs: Long = 0L
+    private var lastReportedCrashPackage: String = ""
+
+    private fun notifyCrashIfUnique(crashEvent: TelemetryEvent, onCrashDetected: (TelemetryEvent) -> Unit) {
+        val pkg = crashEvent.details["target_package"]?.toString() ?: ""
+        val nowMs = System.currentTimeMillis()
+        if (pkg == lastReportedCrashPackage && (nowMs - lastReportedCrashTimeMs) < 3000L) {
+            Log.w(TAG, "[DEDUP MONITOR] Suppressed duplicate crash event signal for $pkg within 3000ms window.")
+            return
+        }
+        lastReportedCrashTimeMs = nowMs
+        lastReportedCrashPackage = pkg
+        onCrashDetected(crashEvent)
+    }
+
     fun startMonitoring(
         targetPackage: String = TARGET_V1,
         getLastOrientation: () -> String,
@@ -35,6 +51,8 @@ class TargetAppMonitor(private val context: Context) {
 
         sessionStartTimeMs = System.currentTimeMillis() - 1000L
         lastRecordedExitTimestampMs = sessionStartTimeMs
+        lastReportedCrashTimeMs = 0L
+        lastReportedCrashPackage = ""
 
         Log.i(TAG, "[MONITOR START] Target app monitoring active. Configured target: $targetPackage, SessionStartMs: $sessionStartTimeMs")
 
@@ -46,7 +64,9 @@ class TargetAppMonitor(private val context: Context) {
                     val reason = intent.getStringExtra("exit_reason") ?: "UNHANDLED_EXCEPTION"
                     val desc = intent.getStringExtra("exit_description") ?: "Target application uncaught exception"
                     val excClass = intent.getStringExtra("exception_class") ?: "java.lang.IllegalStateException"
-                    val lastOrientation = getLastOrientation()
+                    val isCharging = intent.getBooleanExtra("is_charging", false)
+                    val netState = intent.getStringExtra("network_state") ?: "Wi-Fi"
+                    val lastOrientation = intent.getStringExtra("last_orientation") ?: getLastOrientation()
 
                     val nowMs = System.currentTimeMillis()
                     lastRecordedExitTimestampMs = nowMs
@@ -59,11 +79,13 @@ class TargetAppMonitor(private val context: Context) {
                             "target_package" to pkg,
                             "exit_reason" to reason,
                             "exit_description" to "$excClass: $desc",
-                            "last_orientation" to lastOrientation.uppercase()
+                            "last_orientation" to lastOrientation.uppercase(),
+                            "is_charging" to isCharging.toString(),
+                            "network" to netState
                         )
                     )
                     Log.e(TAG, "[EMPIRICAL CRASH RECEIVED VIA BROADCAST] $crashEvent")
-                    onCrashDetected(crashEvent)
+                    notifyCrashIfUnique(crashEvent, onCrashDetected)
                 }
             }
         }
@@ -129,7 +151,7 @@ class TargetAppMonitor(private val context: Context) {
                                                 )
                                             )
                                             Log.e(TAG, "[CRASH DETECTED VIA SYSTEM EXIT_INFO] $crashEvent")
-                                            onCrashDetected(crashEvent)
+                                            notifyCrashIfUnique(crashEvent, onCrashDetected)
                                             break
                                         }
                                     }
@@ -162,7 +184,7 @@ class TargetAppMonitor(private val context: Context) {
                                     )
                                 )
                                 Log.e(TAG, "[CRASH DETECTED VIA PROCESS DISAPPEARANCE] $crashEvent")
-                                onCrashDetected(crashEvent)
+                                notifyCrashIfUnique(crashEvent, onCrashDetected)
                             }
                             wasV1Running = isV1Running
                         } catch (e: Exception) {

@@ -8,11 +8,16 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
 import android.os.Process
+import android.os.SystemClock
+import android.view.OrientationEventListener
 import com.bugtrace.app.model.TelemetryData
+import com.bugtrace.app.model.TelemetryEvent
+import com.bugtrace.app.model.TelemetrySnapshot
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.Locale
 
 class TelemetryCollector private constructor(private val context: Context) {
 
@@ -32,14 +37,61 @@ class TelemetryCollector private constructor(private val context: Context) {
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var captureJob: Job? = null
-    private val currentSessionHistory = mutableListOf<com.bugtrace.app.model.TelemetrySnapshot>()
-    private val currentSessionEvents = mutableListOf<com.bugtrace.app.model.TelemetryEvent>()
+    private val currentSessionHistory = mutableListOf<TelemetrySnapshot>()
+    private val currentSessionEvents = mutableListOf<TelemetryEvent>()
     private val targetAppMonitor = TargetAppMonitor(context.applicationContext)
     var currentTargetPackage: String = TargetAppMonitor.TARGET_V1
 
+    private var captureStartRealtimeMs: Long = 0L
+    private var orientationEventListener: OrientationEventListener? = null
+    @Volatile
+    private var currentHardwareOrientation: String = "Portrait"
+
     init {
-        // Initial single read
+        initOrientationEventListener()
         updateTelemetry()
+    }
+
+    private fun initOrientationEventListener() {
+        try {
+            orientationEventListener = object : OrientationEventListener(context) {
+                override fun onOrientationChanged(orientationDegrees: Int) {
+                    if (orientationDegrees == ORIENTATION_UNKNOWN) return
+                    val newOrientation = when (orientationDegrees) {
+                        in 45..135 -> "Landscape"
+                        in 225..315 -> "Landscape"
+                        else -> "Portrait"
+                    }
+                    if (newOrientation != currentHardwareOrientation) {
+                        currentHardwareOrientation = newOrientation
+                        handleOrientationChanged(newOrientation)
+                    }
+                }
+            }
+            if (orientationEventListener?.canDetectOrientation() == true) {
+                orientationEventListener?.enable()
+            }
+        } catch (e: Exception) {
+            // Fallback to configuration
+        }
+    }
+
+    private fun handleOrientationChanged(newOrientation: String) {
+        val event = TelemetryEvent(
+            timestampMs = System.currentTimeMillis(),
+            eventType = "ORIENTATION_CHANGE",
+            description = "Device orientation changed to ${newOrientation.uppercase()}"
+        )
+        synchronized(currentSessionHistory) {
+            if (_telemetryState.value.isCapturing) {
+                currentSessionEvents.add(event)
+                currentSessionHistory.add(createSnapshot())
+            }
+        }
+        _telemetryState.value = _telemetryState.value.copy(
+            orientation = newOrientation,
+            events = if (_telemetryState.value.isCapturing) _telemetryState.value.events + event else _telemetryState.value.events
+        )
     }
 
     private var lastProcessCpuMs = Process.getElapsedCpuTime()
@@ -66,13 +118,13 @@ class TelemetryCollector private constructor(private val context: Context) {
         }
     }
 
-    private fun createSnapshot(): com.bugtrace.app.model.TelemetrySnapshot {
+    private fun createSnapshot(): TelemetrySnapshot {
         val (batteryLevel, isCharging) = getBatteryInfo()
         val networkState = getNetworkState()
         val cpuSummary = getCpuSummary()
         val cpuPct = getCpuLoadPercent()
         val currentOrientation = getOrientationFromContext()
-        return com.bugtrace.app.model.TelemetrySnapshot(
+        return TelemetrySnapshot(
             timestampMs = System.currentTimeMillis(),
             batteryPercent = batteryLevel,
             isCharging = isCharging,
@@ -83,13 +135,45 @@ class TelemetryCollector private constructor(private val context: Context) {
         )
     }
 
-    fun recordAppCrashEvent(event: com.bugtrace.app.model.TelemetryEvent) {
+    fun recordAppCrashEvent(event: TelemetryEvent) {
+        val targetPkg = event.details["target_package"]?.toString() ?: ""
+        val nowMs = System.currentTimeMillis()
+
         synchronized(currentSessionHistory) {
+            // Deduplicate APP_CRASH within 3000ms window
+            val isDuplicate = currentSessionEvents.any { existingEvt ->
+                existingEvt.eventType == "APP_CRASH" &&
+                (nowMs - existingEvt.timestampMs) < 3000L &&
+                existingEvt.details["target_package"] == targetPkg
+            }
+
+            if (isDuplicate) {
+                return
+            }
+
             currentSessionEvents.add(event)
+
+            // Force an immediate crash-time snapshot
+            val crashOrient = event.details["last_orientation"]?.toString()
+                ?.lowercase()
+                ?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() }
+                ?: currentHardwareOrientation
+
+            val crashSnapshot = createSnapshot().copy(
+                timestampMs = nowMs,
+                orientation = crashOrient
+            )
+            currentSessionHistory.add(crashSnapshot)
+
+            _telemetryState.value = _telemetryState.value.copy(
+                orientation = crashSnapshot.orientation,
+                batteryPercent = crashSnapshot.batteryPercent,
+                isCharging = crashSnapshot.isCharging,
+                networkState = crashSnapshot.networkState,
+                telemetryHistory = currentSessionHistory.toList(),
+                events = currentSessionEvents.toList()
+            )
         }
-        _telemetryState.value = _telemetryState.value.copy(
-            events = _telemetryState.value.events + event
-        )
     }
 
     fun startCapture(targetPackage: String = currentTargetPackage) {
@@ -97,13 +181,14 @@ class TelemetryCollector private constructor(private val context: Context) {
             stopCapture()
         }
         currentTargetPackage = targetPackage
+        captureStartRealtimeMs = SystemClock.elapsedRealtime()
 
         synchronized(currentSessionHistory) {
             currentSessionHistory.clear()
             currentSessionEvents.clear()
             val initialSnap = createSnapshot()
             currentSessionHistory.add(initialSnap)
-            val startEvent = com.bugtrace.app.model.TelemetryEvent(
+            val startEvent = TelemetryEvent(
                 eventType = "CAPTURE_START",
                 description = "User started real telemetry capture for $targetPackage"
             )
@@ -117,10 +202,10 @@ class TelemetryCollector private constructor(private val context: Context) {
             )
         }
 
-        // Start real-time target process crash monitoring
+        // Start target app crash monitoring
         targetAppMonitor.startMonitoring(
             targetPackage = currentTargetPackage,
-            getLastOrientation = { _telemetryState.value.orientation },
+            getLastOrientation = { currentHardwareOrientation },
             onCrashDetected = { crashEvent ->
                 recordAppCrashEvent(crashEvent)
             },
@@ -129,27 +214,51 @@ class TelemetryCollector private constructor(private val context: Context) {
 
         captureJob = scope.launch {
             while (isActive) {
-                updateTelemetry()
-                delay(1000) // Refresh telemetry every 1 second
-                val snap = createSnapshot()
-                val (updatedSnapshots, updatedEvents) = synchronized(currentSessionHistory) {
-                    currentSessionHistory.add(snap)
+                delay(200) // 200ms tick loop for monotonic capture timer
+                val elapsedSecs = maxOf(0, ((SystemClock.elapsedRealtime() - captureStartRealtimeMs) / 1000L).toInt())
+                val nowMs = System.currentTimeMillis()
+
+                val (updatedHistory, updatedEvents) = synchronized(currentSessionHistory) {
+                    val lastSnapMs = currentSessionHistory.lastOrNull()?.timestampMs ?: 0L
+                    if (nowMs - lastSnapMs >= 1000L) {
+                        currentSessionHistory.add(createSnapshot())
+                    }
                     Pair(currentSessionHistory.toList(), currentSessionEvents.toList())
                 }
+
+                val (batteryLevel, isCharging) = getBatteryInfo()
+                val networkState = getNetworkState()
+                val cpuSummary = getCpuSummary()
+                val cpuPct = getCpuLoadPercent()
+
                 _telemetryState.value = _telemetryState.value.copy(
-                    elapsedSeconds = _telemetryState.value.elapsedSeconds + 1,
-                    telemetryHistory = updatedSnapshots,
+                    elapsedSeconds = elapsedSecs,
+                    batteryPercent = batteryLevel,
+                    isCharging = isCharging,
+                    networkState = networkState,
+                    cpuSummary = cpuSummary,
+                    cpuPercent = cpuPct,
+                    orientation = currentHardwareOrientation,
+                    timestampMs = nowMs,
+                    telemetryHistory = updatedHistory,
                     events = updatedEvents
                 )
             }
         }
     }
 
-    fun stopCapture(): List<com.bugtrace.app.model.TelemetrySnapshot> {
+    fun stopCapture(): List<TelemetrySnapshot> {
         targetAppMonitor.stopMonitoring()
         captureJob?.cancel()
         captureJob = null
-        val stopEvent = com.bugtrace.app.model.TelemetryEvent(
+
+        val finalElapsedSecs = if (captureStartRealtimeMs > 0L) {
+            maxOf(0, ((SystemClock.elapsedRealtime() - captureStartRealtimeMs) / 1000L).toInt())
+        } else {
+            _telemetryState.value.elapsedSeconds
+        }
+
+        val stopEvent = TelemetryEvent(
             eventType = "CAPTURE_STOP",
             description = "User stopped telemetry capture session"
         )
@@ -157,8 +266,10 @@ class TelemetryCollector private constructor(private val context: Context) {
             currentSessionEvents.add(stopEvent)
             Pair(currentSessionHistory.toList(), currentSessionEvents.toList())
         }
+
         _telemetryState.value = _telemetryState.value.copy(
             isCapturing = false,
+            elapsedSeconds = finalElapsedSecs,
             telemetryHistory = finalHistory,
             events = finalEvents
         )
@@ -178,21 +289,12 @@ class TelemetryCollector private constructor(private val context: Context) {
         val orientationStr = when (orientationCode) {
             Configuration.ORIENTATION_LANDSCAPE -> "Landscape"
             Configuration.ORIENTATION_PORTRAIT -> "Portrait"
-            else -> "Portrait"
+            else -> currentHardwareOrientation
         }
-        val event = com.bugtrace.app.model.TelemetryEvent(
-            eventType = "ORIENTATION_CHANGE",
-            description = "Device orientation changed to ${orientationStr.uppercase()}"
-        )
-        synchronized(currentSessionHistory) {
-            if (_telemetryState.value.isCapturing) {
-                currentSessionEvents.add(event)
-            }
+        if (orientationStr != currentHardwareOrientation) {
+            currentHardwareOrientation = orientationStr
+            handleOrientationChanged(orientationStr)
         }
-        _telemetryState.value = _telemetryState.value.copy(
-            orientation = orientationStr,
-            events = if (_telemetryState.value.isCapturing) _telemetryState.value.events + event else _telemetryState.value.events
-        )
     }
 
     fun updateTelemetry() {
@@ -271,18 +373,14 @@ class TelemetryCollector private constructor(private val context: Context) {
     }
 
     private fun getOrientationFromContext(): String {
-        val sysOrientation = android.content.res.Resources.getSystem().configuration.orientation
-        val ctxOrientation = context.resources.configuration.orientation
-        val orientationCode = if (sysOrientation != Configuration.ORIENTATION_UNDEFINED) sysOrientation else ctxOrientation
-        return when (orientationCode) {
-            Configuration.ORIENTATION_LANDSCAPE -> "Landscape"
-            Configuration.ORIENTATION_PORTRAIT -> "Portrait"
-            else -> _telemetryState.value.orientation.ifEmpty { "Portrait" }
-        }
+        return currentHardwareOrientation
     }
 
     fun cleanUp() {
         stopCapture()
+        try {
+            orientationEventListener?.disable()
+        } catch (e: Exception) {}
         scope.cancel()
     }
 }

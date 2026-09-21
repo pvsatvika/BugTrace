@@ -86,12 +86,16 @@ class MainActivity : ComponentActivity() {
         val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
+                val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
                 val intent = Intent("com.bugtrace.app.ACTION_APP_CRASH").apply {
                     setPackage("com.bugtrace.app")
                     putExtra("target_package", packageName)
                     putExtra("exit_reason", "UNHANDLED_EXCEPTION")
                     putExtra("exit_description", throwable.message ?: throwable.toString())
                     putExtra("exception_class", throwable.javaClass.name)
+                    putExtra("is_charging", isDeviceCharging(this@MainActivity))
+                    putExtra("network_state", if (isWifiConnected(this@MainActivity)) "Wi-Fi" else "Other")
+                    putExtra("last_orientation", if (isLandscape) "LANDSCAPE" else "PORTRAIT")
                 }
                 sendBroadcast(intent)
             } catch (e: Exception) {
