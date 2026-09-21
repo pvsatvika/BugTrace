@@ -23,7 +23,7 @@ class TestAnalyzer(unittest.TestCase):
         self.assertTrue(any("normal level" in e for e in report.evidence))
 
     def test_app_crash_v1_demo_scenario(self):
-        # Scenario: ShopDemo V1 landscape crash
+        # Scenario: ShopDemo V1 landscape crash under multi-conditions
         telemetry = TelemetryLogInput(
             battery=80,
             orientation="landscape",
@@ -44,8 +44,8 @@ class TestAnalyzer(unittest.TestCase):
                 )
             ],
             telemetry_history=[
-                TelemetrySnapshotInput(battery=80, orientation="portrait", network="wifi", cpu=15.0),
-                TelemetrySnapshotInput(battery=80, orientation="landscape", network="wifi", cpu=25.0)
+                TelemetrySnapshotInput(battery=80, is_charging=True, orientation="portrait", network="wifi", cpu=15.0),
+                TelemetrySnapshotInput(battery=80, is_charging=True, orientation="landscape", network="wifi", cpu=25.0)
             ]
         )
         report = analyze_telemetry("log-crash", telemetry, "REP-CRASH")
@@ -53,11 +53,14 @@ class TestAnalyzer(unittest.TestCase):
         self.assertEqual(report.detection_status, "ANOMALY DETECTED")
         self.assertEqual(report.confidence, 98)
         self.assertIn("app_crash", report.conditions)
+        self.assertEqual(report.device_context.get("charging"), "CHARGING (USB/AC)")
         self.assertTrue(any("com.example.shopdemo.v1" in step for step in report.reproduction_steps))
-        self.assertTrue(any("landscape" in step.lower() for step in report.reproduction_steps))
+        self.assertTrue(any("CHARGING" in cond for cond in report.observed_conditions))
+        self.assertTrue(any("WI-FI" in cond for cond in report.observed_conditions))
+        self.assertTrue(any("LANDSCAPE" in cond for cond in report.observed_conditions))
 
     def test_shopdemo_v2_landscape_survival_scenario(self):
-        # Scenario: ShopDemo V2 rotated to landscape with NO crash
+        # Scenario: ShopDemo V2 rotated to landscape with NO crash under multi-conditions
         telemetry = TelemetryLogInput(
             battery=82,
             orientation="landscape",
@@ -69,8 +72,8 @@ class TestAnalyzer(unittest.TestCase):
                 TelemetryEventInput(event_type="ORIENTATION_CHANGE", description="Orientation changed to LANDSCAPE")
             ],
             telemetry_history=[
-                TelemetrySnapshotInput(battery=82, orientation="portrait", network="wifi", cpu=15.0),
-                TelemetrySnapshotInput(battery=82, orientation="landscape", network="wifi", cpu=18.0)
+                TelemetrySnapshotInput(battery=82, is_charging=True, orientation="portrait", network="wifi", cpu=15.0),
+                TelemetrySnapshotInput(battery=82, is_charging=True, orientation="landscape", network="wifi", cpu=18.0)
             ]
         )
         report = analyze_telemetry("log-v2", telemetry, "REP-V2")
